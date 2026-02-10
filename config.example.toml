@@ -1,0 +1,24 @@
+# MHSGrader Configuration
+# Copy to config.toml and adjust as needed.
+# Environment variables (MHSGRADER_*) override these values.
+
+# Environment: "dev" or "prod"
+env = "dev"
+
+# Log level: "debug", "info", "warn", "error"
+log_level = "info"
+
+# MongoDB connection (shared cluster)
+mongo_uri = "mongodb://localhost:27017"
+mongo_max_pool_size = 100
+mongo_min_pool_size = 10
+
+# Database names (same cluster, different databases for separation of concerns)
+log_database = "stratalog"      # Read-only: where logdata lives
+grades_database = "mhsgrader"   # Read/write: where grades and state are stored
+
+# Grader settings
+game = "mhs"                  # Game identifier
+scan_interval = "5s"          # Poll interval for new logs
+batch_size = 500              # Max logs per scan
+reprocess_all = false         # Set true to reset cursor and reprocess all logs

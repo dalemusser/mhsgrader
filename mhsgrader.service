@@ -1,0 +1,26 @@
+# systemd service file for MHSGrader
+# Copy to /etc/systemd/system/mhsgrader.service
+# Then: sudo systemctl daemon-reload && sudo systemctl enable mhsgrader
+
+[Unit]
+Description=MHS Grader Service
+After=network.target
+
+[Service]
+Type=simple
+User=mhsgrader
+Group=mhsgrader
+WorkingDirectory=/opt/mhsgrader
+ExecStart=/opt/mhsgrader/mhsgrader
+Restart=always
+RestartSec=5
+
+# Environment file for secrets
+EnvironmentFile=/opt/mhsgrader/.env
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
