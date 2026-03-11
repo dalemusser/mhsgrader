@@ -15,7 +15,6 @@ func Startup(ctx context.Context, coreCfg *config.CoreConfig, appCfg AppConfig, 
 		zap.String("game", appCfg.Game),
 		zap.Duration("scan_interval", appCfg.ScanInterval),
 		zap.Int("batch_size", appCfg.BatchSize),
-		zap.Bool("reprocess_all", appCfg.ReprocessAll),
 	)
 
 	// The grading engine will be started after hooks complete

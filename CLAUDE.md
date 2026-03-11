@@ -72,7 +72,6 @@ Environment variables use `MHSGRADER_` prefix:
 | `MHSGRADER_GAME` | mhs | Game identifier |
 | `MHSGRADER_SCAN_INTERVAL` | 5s | Poll interval |
 | `MHSGRADER_BATCH_SIZE` | 500 | Max logs per scan |
-| `MHSGRADER_REPROCESS_ALL` | false | Reset cursor and reprocess all logs |
 
 ## Common Commands
 
@@ -80,9 +79,13 @@ Environment variables use `MHSGRADER_` prefix:
 make build        # Build binary
 make build-linux  # Build for Linux (production)
 make run          # Run locally
-make run-backfill # Run in backfill mode
+make run-reset    # Run with --reset to clear all state and grades
 make tidy         # Sync dependencies
 make test         # Run tests
+
+# Or directly with the binary:
+./mhsgrader           # Normal operation (continues from cursor)
+./mhsgrader --reset   # Clear all state and grades, then exit
 ```
 
 ## Data Structures

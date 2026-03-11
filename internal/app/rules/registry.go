@@ -2,24 +2,23 @@
 package rules
 
 import (
-	"strings"
 	"sync"
 )
 
 // Registry maps eventKeys to rules.
 type Registry struct {
-	mu          sync.RWMutex
-	rulesByKey  map[string][]Rule // eventKey (lowercase) -> rules
-	allRules    []Rule
-	originalKeys []string // original case trigger keys for scanning
+	mu         sync.RWMutex
+	rulesByKey map[string][]Rule // eventKey -> rules (exact match)
+	allRules   []Rule
+	allKeys    []string // all trigger keys for scanning
 }
 
 // NewRegistry creates a new rule registry.
 func NewRegistry() *Registry {
 	return &Registry{
-		rulesByKey:   make(map[string][]Rule),
-		allRules:     make([]Rule, 0),
-		originalKeys: make([]string, 0),
+		rulesByKey: make(map[string][]Rule),
+		allRules:   make([]Rule, 0),
+		allKeys:    make([]string, 0),
 	}
 }
 
@@ -30,31 +29,28 @@ func (r *Registry) Register(rule Rule) {
 
 	r.allRules = append(r.allRules, rule)
 	for _, key := range rule.TriggerKeys() {
-		// Store with lowercase key for case-insensitive lookup
-		lowerKey := strings.ToLower(key)
-		r.rulesByKey[lowerKey] = append(r.rulesByKey[lowerKey], rule)
-		// Keep original key for scanning (regex will handle case)
-		r.originalKeys = append(r.originalKeys, key)
+		// Store with exact key for exact match lookup
+		r.rulesByKey[key] = append(r.rulesByKey[key], rule)
+		r.allKeys = append(r.allKeys, key)
 	}
 }
 
 // GetRulesForKey returns all rules triggered by a specific eventKey.
-// Uses case-insensitive matching.
+// Uses exact string matching.
 func (r *Registry) GetRulesForKey(eventKey string) []Rule {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.rulesByKey[strings.ToLower(eventKey)]
+	return r.rulesByKey[eventKey]
 }
 
 // AllTriggerKeys returns all eventKeys that trigger rules.
-// Returns the original case keys for use in regex scanning.
 func (r *Registry) AllTriggerKeys() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	// Return copy of original keys
-	keys := make([]string, len(r.originalKeys))
-	copy(keys, r.originalKeys)
+	// Return copy of keys
+	keys := make([]string, len(r.allKeys))
+	copy(keys, r.allKeys)
 	return keys
 }
 
@@ -83,6 +79,13 @@ func DefaultRegistry() *Registry {
 	reg.Register(NewU2P5Rule())
 	reg.Register(NewU2P6Rule())
 	reg.Register(NewU2P7Rule())
+
+	// Unit 3 rules
+	reg.Register(NewU3P1Rule())
+	reg.Register(NewU3P2Rule())
+	reg.Register(NewU3P3Rule())
+	reg.Register(NewU3P4Rule())
+	reg.Register(NewU3P5Rule())
 
 	return reg
 }

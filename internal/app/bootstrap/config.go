@@ -27,7 +27,6 @@ var appConfigKeys = []config.AppKey{
 	{Name: "game", Default: "mhs", Desc: "Game identifier"},
 	{Name: "scan_interval", Default: "5s", Desc: "Poll interval for new logs (e.g., 5s, 10s, 1m)"},
 	{Name: "batch_size", Default: 500, Desc: "Maximum logs to process per scan"},
-	{Name: "reprocess_all", Default: false, Desc: "Set true to reset cursor and reprocess all logs"},
 }
 
 // LoadConfig loads WAFFLE core config and app-specific config.
@@ -48,7 +47,6 @@ func LoadConfig(logger *zap.Logger) (*config.CoreConfig, AppConfig, error) {
 		Game:         appValues.String("game"),
 		ScanInterval: appValues.Duration("scan_interval", 5*time.Second),
 		BatchSize:    appValues.Int("batch_size"),
-		ReprocessAll: appValues.Bool("reprocess_all"),
 	}
 
 	return coreCfg, appCfg, nil

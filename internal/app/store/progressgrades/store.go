@@ -101,3 +101,12 @@ func (s *Store) ListPlayers(ctx context.Context, game string) ([]string, error) 
 	}
 	return players, cur.Err()
 }
+
+// DeleteAll removes all grade documents. Returns count of deleted documents.
+func (s *Store) DeleteAll(ctx context.Context) (int64, error) {
+	result, err := s.coll.DeleteMany(ctx, bson.M{})
+	if err != nil {
+		return 0, err
+	}
+	return result.DeletedCount, nil
+}

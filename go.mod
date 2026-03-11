@@ -3,7 +3,7 @@ module github.com/dalemusser/mhsgrader
 go 1.24.1
 
 require (
-	github.com/dalemusser/waffle v0.1.35
+	github.com/dalemusser/waffle v0.1.36
 	go.mongodb.org/mongo-driver v1.17.6
 	go.uber.org/zap v1.27.1
 )

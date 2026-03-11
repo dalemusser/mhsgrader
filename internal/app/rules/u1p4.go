@@ -7,7 +7,9 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-// U1P4Rule: Trigger QuestFinishEvent:34 -> Always green
+// U1P4Rule: "Unexpected Turbulence"
+// Trigger: DialogueNodeEvent:33:19
+// Logic: Always green
 type U1P4Rule struct {
 	BaseRule
 }
@@ -15,7 +17,7 @@ type U1P4Rule struct {
 // NewU1P4Rule creates a new U1P4 rule.
 func NewU1P4Rule() *U1P4Rule {
 	return &U1P4Rule{
-		BaseRule: NewBaseRule(1, 4, "v1", []string{"QuestFinishEvent:34"}),
+		BaseRule: NewBaseRule(1, 4, "v1", []string{"DialogueNodeEvent:33:19"}),
 	}
 }
 

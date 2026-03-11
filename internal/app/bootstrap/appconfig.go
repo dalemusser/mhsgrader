@@ -18,5 +18,4 @@ type AppConfig struct {
 	Game         string        // Game identifier (default: mhs)
 	ScanInterval time.Duration // Poll interval for new logs (default: 5s)
 	BatchSize    int           // Max logs per scan (default: 500)
-	ReprocessAll bool          // Set true to reset cursor and reprocess all logs
 }

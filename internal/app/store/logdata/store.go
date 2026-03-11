@@ -4,7 +4,6 @@ package logdata
 
 import (
 	"context"
-	"regexp"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -14,29 +13,6 @@ import (
 )
 
 const collectionName = "logdata"
-
-// eventKeyFilter returns a case-insensitive filter for a single eventKey.
-// This handles the case where eventKeys in the database may have different casing
-// (e.g., "QuestFinishEvent:34" vs "questFinishEvent:34").
-// Uses primitive.Regex for DocumentDB compatibility.
-func eventKeyFilter(eventKey string) primitive.Regex {
-	// Escape regex special characters in the eventKey
-	escaped := regexp.QuoteMeta(eventKey)
-	return primitive.Regex{Pattern: "^" + escaped + "$", Options: "i"}
-}
-
-// eventKeysFilter returns a case-insensitive filter for multiple eventKeys using $or.
-func eventKeysFilter(eventKeys []string) bson.M {
-	if len(eventKeys) == 1 {
-		return bson.M{"eventKey": eventKeyFilter(eventKeys[0])}
-	}
-	orFilters := make([]bson.M, len(eventKeys))
-	for i, key := range eventKeys {
-		escaped := regexp.QuoteMeta(key)
-		orFilters[i] = bson.M{"eventKey": primitive.Regex{Pattern: "^" + escaped + "$", Options: "i"}}
-	}
-	return bson.M{"$or": orFilters}
-}
 
 // LogEntry represents a log entry from stratalog.
 type LogEntry struct {
@@ -62,17 +38,11 @@ func New(db *mongo.Database) *Store {
 
 // ScanTriggers scans for log entries with specific eventKeys after a given _id.
 // Returns entries sorted by _id ascending.
-// Uses case-insensitive matching for eventKeys.
+// Uses exact string matching for eventKeys.
 func (s *Store) ScanTriggers(ctx context.Context, game string, triggerKeys []string, afterID primitive.ObjectID, limit int) ([]LogEntry, error) {
-	// Build base filter with game
-	filter := bson.M{"game": game}
-
-	// Add case-insensitive eventKey matching
-	eventFilter := eventKeysFilter(triggerKeys)
-	if orFilters, ok := eventFilter["$or"]; ok {
-		filter["$or"] = orFilters
-	} else if eventKey, ok := eventFilter["eventKey"]; ok {
-		filter["eventKey"] = eventKey
+	filter := bson.M{
+		"game":     game,
+		"eventKey": bson.M{"$in": triggerKeys},
 	}
 
 	// If afterID is not zero, only get entries after it
@@ -98,64 +68,58 @@ func (s *Store) ScanTriggers(ctx context.Context, game string, triggerKeys []str
 }
 
 // CountByEventKey counts logs matching a game, player, and eventKey.
-// Uses case-insensitive matching for eventKey.
+// Uses exact string matching for eventKey.
 func (s *Store) CountByEventKey(ctx context.Context, game, playerID, eventKey string) (int64, error) {
 	filter := bson.M{
 		"game":     game,
 		"playerId": playerID,
-		"eventKey": eventKeyFilter(eventKey),
+		"eventKey": eventKey,
 	}
 	return s.coll.CountDocuments(ctx, filter)
 }
 
 // CountByEventKeyAfter counts logs matching criteria after a given timestamp.
-// Uses case-insensitive matching for eventKey.
+// Uses exact string matching for eventKey.
 func (s *Store) CountByEventKeyAfter(ctx context.Context, game, playerID, eventKey string, after time.Time) (int64, error) {
 	filter := bson.M{
 		"game":            game,
 		"playerId":        playerID,
-		"eventKey":        eventKeyFilter(eventKey),
+		"eventKey":        eventKey,
 		"serverTimestamp": bson.M{"$gte": after},
 	}
 	return s.coll.CountDocuments(ctx, filter)
 }
 
 // ExistsByEventKey checks if any log exists matching the criteria.
-// Uses case-insensitive matching for eventKey.
+// Uses exact string matching for eventKey.
 func (s *Store) ExistsByEventKey(ctx context.Context, game, playerID, eventKey string) (bool, error) {
 	count, err := s.coll.CountDocuments(ctx, bson.M{
 		"game":     game,
 		"playerId": playerID,
-		"eventKey": eventKeyFilter(eventKey),
+		"eventKey": eventKey,
 	}, options.Count().SetLimit(1))
 	return count > 0, err
 }
 
 // ExistsByEventKeys checks if any log exists matching any of the given eventKeys.
-// Uses case-insensitive matching for eventKeys.
+// Uses exact string matching for eventKeys.
 func (s *Store) ExistsByEventKeys(ctx context.Context, game, playerID string, eventKeys []string) (bool, error) {
 	filter := bson.M{
 		"game":     game,
 		"playerId": playerID,
-	}
-	// Add case-insensitive eventKey matching
-	eventFilter := eventKeysFilter(eventKeys)
-	if orFilters, ok := eventFilter["$or"]; ok {
-		filter["$or"] = orFilters
-	} else if eventKey, ok := eventFilter["eventKey"]; ok {
-		filter["eventKey"] = eventKey
+		"eventKey": bson.M{"$in": eventKeys},
 	}
 	count, err := s.coll.CountDocuments(ctx, filter, options.Count().SetLimit(1))
 	return count > 0, err
 }
 
 // FindByEventKey finds all logs matching the criteria.
-// Uses case-insensitive matching for eventKey.
+// Uses exact string matching for eventKey.
 func (s *Store) FindByEventKey(ctx context.Context, game, playerID, eventKey string) ([]LogEntry, error) {
 	filter := bson.M{
 		"game":     game,
 		"playerId": playerID,
-		"eventKey": eventKeyFilter(eventKey),
+		"eventKey": eventKey,
 	}
 	opts := options.Find().SetSort(bson.D{{Key: "serverTimestamp", Value: 1}})
 
@@ -173,12 +137,12 @@ func (s *Store) FindByEventKey(ctx context.Context, game, playerID, eventKey str
 }
 
 // GetMostRecent gets the most recent log for a player with a specific eventKey.
-// Uses case-insensitive matching for eventKey.
+// Uses exact string matching for eventKey.
 func (s *Store) GetMostRecent(ctx context.Context, game, playerID, eventKey string) (*LogEntry, error) {
 	filter := bson.M{
 		"game":     game,
 		"playerId": playerID,
-		"eventKey": eventKeyFilter(eventKey),
+		"eventKey": eventKey,
 	}
 	opts := options.FindOne().SetSort(bson.D{{Key: "serverTimestamp", Value: -1}})
 
@@ -200,24 +164,24 @@ func (s *Store) GetWindowStart(ctx context.Context, game, playerID, eventKey str
 }
 
 // CountByEventKeyInWindow counts logs in a time window.
-// Uses case-insensitive matching for eventKey.
+// Uses exact string matching for eventKey.
 func (s *Store) CountByEventKeyInWindow(ctx context.Context, game, playerID, eventKey string, windowStart time.Time) (int64, error) {
 	filter := bson.M{
 		"game":            game,
 		"playerId":        playerID,
-		"eventKey":        eventKeyFilter(eventKey),
+		"eventKey":        eventKey,
 		"serverTimestamp": bson.M{"$gte": windowStart},
 	}
 	return s.coll.CountDocuments(ctx, filter)
 }
 
 // FindByEventKeyInWindow finds logs in a time window.
-// Uses case-insensitive matching for eventKey.
+// Uses exact string matching for eventKey.
 func (s *Store) FindByEventKeyInWindow(ctx context.Context, game, playerID, eventKey string, windowStart time.Time) ([]LogEntry, error) {
 	filter := bson.M{
 		"game":            game,
 		"playerId":        playerID,
-		"eventKey":        eventKeyFilter(eventKey),
+		"eventKey":        eventKey,
 		"serverTimestamp": bson.M{"$gte": windowStart},
 	}
 	opts := options.Find().SetSort(bson.D{{Key: "serverTimestamp", Value: 1}})
@@ -233,4 +197,104 @@ func (s *Store) FindByEventKeyInWindow(ctx context.Context, game, playerID, even
 		return nil, err
 	}
 	return entries, nil
+}
+
+// ============================================================================
+// _id-based windowing methods for replay-safe grading
+// ============================================================================
+
+// GetLatestByEventKey gets the most recent log by _id (not timestamp).
+func (s *Store) GetLatestByEventKey(ctx context.Context, game, playerID, eventKey string) (*LogEntry, error) {
+	filter := bson.M{
+		"game":     game,
+		"playerId": playerID,
+		"eventKey": eventKey,
+	}
+	opts := options.FindOne().SetSort(bson.D{{Key: "_id", Value: -1}})
+
+	var entry LogEntry
+	err := s.coll.FindOne(ctx, filter, opts).Decode(&entry)
+	if err == mongo.ErrNoDocuments {
+		return nil, nil
+	}
+	return &entry, err
+}
+
+// GetPreviousByEventKey gets the most recent log before a given _id.
+func (s *Store) GetPreviousByEventKey(ctx context.Context, game, playerID, eventKey string, beforeID primitive.ObjectID) (*LogEntry, error) {
+	filter := bson.M{
+		"game":     game,
+		"playerId": playerID,
+		"eventKey": eventKey,
+		"_id":      bson.M{"$lt": beforeID},
+	}
+	opts := options.FindOne().SetSort(bson.D{{Key: "_id", Value: -1}})
+
+	var entry LogEntry
+	err := s.coll.FindOne(ctx, filter, opts).Decode(&entry)
+	if err == mongo.ErrNoDocuments {
+		return nil, nil
+	}
+	return &entry, err
+}
+
+// ExistsByEventKeyInIDWindow checks if event exists in _id range (startID, endID].
+// The range is exclusive on startID and inclusive on endID.
+func (s *Store) ExistsByEventKeyInIDWindow(ctx context.Context, game, playerID, eventKey string, startID, endID primitive.ObjectID) (bool, error) {
+	filter := bson.M{
+		"game":     game,
+		"playerId": playerID,
+		"eventKey": eventKey,
+		"_id":      bson.M{"$gt": startID, "$lte": endID},
+	}
+	count, err := s.coll.CountDocuments(ctx, filter, options.Count().SetLimit(1))
+	return count > 0, err
+}
+
+// ExistsByEventKeysInIDWindow checks if any event exists in _id range (startID, endID].
+func (s *Store) ExistsByEventKeysInIDWindow(ctx context.Context, game, playerID string, eventKeys []string, startID, endID primitive.ObjectID) (bool, error) {
+	filter := bson.M{
+		"game":     game,
+		"playerId": playerID,
+		"eventKey": bson.M{"$in": eventKeys},
+		"_id":      bson.M{"$gt": startID, "$lte": endID},
+	}
+	count, err := s.coll.CountDocuments(ctx, filter, options.Count().SetLimit(1))
+	return count > 0, err
+}
+
+// CountByEventKeyInIDWindow counts events in _id range (startID, endID].
+func (s *Store) CountByEventKeyInIDWindow(ctx context.Context, game, playerID, eventKey string, startID, endID primitive.ObjectID) (int64, error) {
+	filter := bson.M{
+		"game":     game,
+		"playerId": playerID,
+		"eventKey": eventKey,
+		"_id":      bson.M{"$gt": startID, "$lte": endID},
+	}
+	return s.coll.CountDocuments(ctx, filter)
+}
+
+// CountByEventKeysInIDWindow counts events matching any key in _id range (startID, endID].
+func (s *Store) CountByEventKeysInIDWindow(ctx context.Context, game, playerID string, eventKeys []string, startID, endID primitive.ObjectID) (int64, error) {
+	filter := bson.M{
+		"game":     game,
+		"playerId": playerID,
+		"eventKey": bson.M{"$in": eventKeys},
+		"_id":      bson.M{"$gt": startID, "$lte": endID},
+	}
+	return s.coll.CountDocuments(ctx, filter)
+}
+
+// ExistsByEventTypeAndDataInIDWindow checks for eventType + data.field match in window.
+// Used for rules that need to check event type and data fields (e.g., U3P3 bonus).
+func (s *Store) ExistsByEventTypeAndDataInIDWindow(ctx context.Context, game, playerID, eventType, dataField, dataValue string, startID, endID primitive.ObjectID) (bool, error) {
+	filter := bson.M{
+		"game":             game,
+		"playerId":         playerID,
+		"eventType":        eventType,
+		"data." + dataField: dataValue,
+		"_id":              bson.M{"$gt": startID, "$lte": endID},
+	}
+	count, err := s.coll.CountDocuments(ctx, filter, options.Count().SetLimit(1))
+	return count > 0, err
 }

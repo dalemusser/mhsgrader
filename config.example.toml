@@ -21,4 +21,4 @@ grades_database = "mhsgrader"   # Read/write: where grades and state are stored
 game = "mhs"                  # Game identifier
 scan_interval = "5s"          # Poll interval for new logs
 batch_size = 500              # Max logs per scan
-reprocess_all = false         # Set true to reset cursor and reprocess all logs
+# To reset cursor and clear all grades: ./mhsgrader --reset (then restart normally)

@@ -16,13 +16,12 @@ type Engine struct {
 	evaluator    *Evaluator
 	registry     *rules.Registry
 	scanInterval time.Duration
-	reprocessAll bool
 	logger       *zap.Logger
 }
 
 // NewEngine creates a new grading engine.
 // logDB is used for reading logs (stratalog), gradesDB is used for storing grades (mhsgrader).
-func NewEngine(logDB, gradesDB *mongo.Database, logger *zap.Logger, game string, scanInterval time.Duration, batchSize int, reprocessAll bool) *Engine {
+func NewEngine(logDB, gradesDB *mongo.Database, logger *zap.Logger, game string, scanInterval time.Duration, batchSize int) *Engine {
 	registry := rules.DefaultRegistry()
 	graderID := game + "-grader"
 
@@ -31,26 +30,17 @@ func NewEngine(logDB, gradesDB *mongo.Database, logger *zap.Logger, game string,
 		evaluator:    NewEvaluator(logDB, gradesDB, registry, logger, game),
 		registry:     registry,
 		scanInterval: scanInterval,
-		reprocessAll: reprocessAll,
 		logger:       logger,
 	}
 }
 
 // Run starts the grading engine and blocks until the context is cancelled.
 func (e *Engine) Run(ctx context.Context) error {
-	// If reprocess_all is set, reset the cursor to start from the beginning
-	if e.reprocessAll {
-		if err := e.scanner.Reset(ctx); err != nil {
-			return err
-		}
-	}
-
 	// Get all trigger keys we need to watch
 	triggerKeys := e.registry.AllTriggerKeys()
 	e.logger.Info("starting grading engine",
 		zap.Int("triggerKeys", len(triggerKeys)),
 		zap.Duration("scanInterval", e.scanInterval),
-		zap.Bool("reprocessAll", e.reprocessAll),
 	)
 
 	ticker := time.NewTicker(e.scanInterval)

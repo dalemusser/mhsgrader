@@ -28,8 +28,8 @@ build-linux: ## Build the binary for Linux (production)
 run: ## Run the grader locally
 	go run ./cmd/mhsgrader
 
-run-reprocess: ## Run the grader with reprocess_all to reset cursor and reprocess
-	MHSGRADER_REPROCESS_ALL=true go run ./cmd/mhsgrader
+run-reset: ## Run the grader with --reset to clear all state and grades
+	go run ./cmd/mhsgrader --reset
 
 ## Dependency management
 

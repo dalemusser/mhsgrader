@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -10,11 +11,18 @@ import (
 
 	"github.com/dalemusser/mhsgrader/internal/app/bootstrap"
 	"github.com/dalemusser/mhsgrader/internal/app/grader"
+	"github.com/dalemusser/mhsgrader/internal/app/store/graderstate"
+	"github.com/dalemusser/mhsgrader/internal/app/store/progressgrades"
 	"github.com/dalemusser/waffle/logging"
+	"github.com/spf13/pflag"
+	"go.mongodb.org/mongo-driver/mongo"
 	"go.uber.org/zap"
 )
 
 func main() {
+	// Define reset flag (must be before LoadConfig which calls pflag.Parse())
+	pflag.Bool("reset", false, "Reset cursor and clear all grades, then exit")
+
 	// Initialize logger
 	logger, err := logging.BuildLogger("info", "dev")
 	if err != nil {
@@ -57,6 +65,17 @@ func main() {
 		logger.Fatal("startup failed", zap.Error(err))
 	}
 
+	// If reset flag, perform complete cleanup and exit
+	resetFlag, _ := pflag.CommandLine.GetBool("reset")
+	if resetFlag {
+		logger.Info("reset flag set - clearing all grader state and grades")
+		if err := performReset(ctx, deps.GradesDatabase, appCfg.Game, logger); err != nil {
+			logger.Fatal("failed to reset", zap.Error(err))
+		}
+		logger.Info("reset complete - exiting")
+		return
+	}
+
 	// Create and start the grading engine
 	engine := grader.NewEngine(
 		deps.LogDatabase,
@@ -65,7 +84,6 @@ func main() {
 		appCfg.Game,
 		appCfg.ScanInterval,
 		appCfg.BatchSize,
-		appCfg.ReprocessAll,
 	)
 
 	// Handle graceful shutdown
@@ -88,4 +106,26 @@ func main() {
 	}
 
 	logger.Info("mhsgrader shutdown complete")
+}
+
+// performReset clears all grader state and grades for a fresh start.
+func performReset(ctx context.Context, db *mongo.Database, game string, logger *zap.Logger) error {
+	graderID := game + "-grader"
+
+	// 1. Delete grader state (cursor)
+	stateStore := graderstate.New(db)
+	if err := stateStore.Reset(ctx, graderID); err != nil {
+		return fmt.Errorf("reset grader state: %w", err)
+	}
+	logger.Info("cleared grader_state cursor", zap.String("graderID", graderID))
+
+	// 2. Delete all grades
+	gradesStore := progressgrades.New(db)
+	count, err := gradesStore.DeleteAll(ctx)
+	if err != nil {
+		return fmt.Errorf("delete grades: %w", err)
+	}
+	logger.Info("cleared progress_point_grades", zap.Int64("deleted", count))
+
+	return nil
 }
