@@ -163,10 +163,35 @@ func (h *LogDataHelper) CountEventsInWindow(ctx context.Context, playerID string
 	return h.store.CountByEventKeysInIDWindow(ctx, h.game, playerID, eventKeys, w.StartID, w.EndID)
 }
 
-// HasEventTypeWithDataInWindow checks for eventType + data match in window (for U3P3 bonus).
+// HasEventTypeWithDataInWindow checks for eventType + data match in window.
 func (h *LogDataHelper) HasEventTypeWithDataInWindow(ctx context.Context, playerID, eventType, dataField, dataValue string, w *AttemptWindow) (bool, error) {
 	if w == nil {
 		return false, nil
 	}
 	return h.store.ExistsByEventTypeAndDataInIDWindow(ctx, h.game, playerID, eventType, dataField, dataValue, w.StartID, w.EndID)
+}
+
+// CountByEventTypeAndData counts events matching eventType + data fields in window.
+func (h *LogDataHelper) CountByEventTypeAndData(ctx context.Context, playerID, eventType string, dataFilter map[string]string, w *AttemptWindow) (int64, error) {
+	if w == nil {
+		return 0, nil
+	}
+	return h.store.CountByEventTypeAndDataInIDWindow(ctx, h.game, playerID, eventType, dataFilter, w.StartID, w.EndID)
+}
+
+// FindLatestByEventTypeAndData finds the most recent event matching eventType + data in window.
+func (h *LogDataHelper) FindLatestByEventTypeAndData(ctx context.Context, playerID, eventType string, dataFilter map[string]string, w *AttemptWindow) (*logdata.LogEntry, error) {
+	if w == nil {
+		return nil, nil
+	}
+	return h.store.FindLatestByEventTypeAndDataInIDWindow(ctx, h.game, playerID, eventType, dataFilter, w.StartID, w.EndID)
+}
+
+// FindEventPairByEventTypeAndData finds first and last events matching eventType + data in window.
+// Used for timing calculations (e.g., duration between start and end of a puzzle).
+func (h *LogDataHelper) FindEventPairByEventTypeAndData(ctx context.Context, playerID, eventType string, firstData, lastData map[string]string, w *AttemptWindow) (*logdata.LogEntry, *logdata.LogEntry, error) {
+	if w == nil {
+		return nil, nil, nil
+	}
+	return h.store.FindEventPairByEventTypeAndDataInIDWindow(ctx, h.game, playerID, eventType, firstData, lastData, w.StartID, w.EndID)
 }

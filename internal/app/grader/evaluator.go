@@ -31,15 +31,45 @@ func NewEvaluator(logDB, gradesDB *mongo.Database, registry *rules.Registry, log
 	}
 }
 
-// EvaluateAndStore evaluates rules for a trigger event and stores the result.
+// EvaluateAndStore processes a scanned event: handles unit starts, point starts (active), and end triggers (evaluate).
 func (e *Evaluator) EvaluateAndStore(ctx context.Context, event TriggerEvent) error {
-	// Get rules for this event key
-	rulesToEval := e.registry.GetRulesForKey(event.EventKey)
-	if len(rulesToEval) == 0 {
-		return nil
+	// Check if this is a unit start event
+	if unitID := e.registry.GetUnitForStartKey(event.EventKey); unitID != "" {
+		if err := e.gradeStore.SetCurrentUnit(ctx, e.game, event.PlayerID, unitID); err != nil {
+			e.logger.Error("failed to set current unit",
+				zap.String("unitId", unitID),
+				zap.String("playerId", event.PlayerID),
+				zap.Error(err),
+			)
+		} else {
+			e.logger.Debug("current unit updated",
+				zap.String("unitId", unitID),
+				zap.String("playerId", event.PlayerID),
+			)
+		}
 	}
 
-	for _, rule := range rulesToEval {
+	// Handle start triggers — set "active" status
+	startRules := e.registry.GetStartRulesForKey(event.EventKey)
+	for _, rule := range startRules {
+		if err := e.gradeStore.SetActiveIfPending(ctx, e.game, event.PlayerID, rule.PointID(), rule.ID()); err != nil {
+			e.logger.Error("failed to set active status",
+				zap.String("rule", rule.ID()),
+				zap.String("playerId", event.PlayerID),
+				zap.Error(err),
+			)
+			continue
+		}
+		e.logger.Debug("active status set",
+			zap.String("rule", rule.ID()),
+			zap.String("playerId", event.PlayerID),
+			zap.String("pointId", rule.PointID()),
+		)
+	}
+
+	// Handle end triggers — evaluate rules and store passed/flagged
+	endRules := e.registry.GetEndRulesForKey(event.EventKey)
+	for _, rule := range endRules {
 		result, err := rule.Evaluate(ctx, e.logDB, e.game, event.PlayerID)
 		if err != nil {
 			e.logger.Error("rule evaluation failed",
@@ -47,12 +77,11 @@ func (e *Evaluator) EvaluateAndStore(ctx context.Context, event TriggerEvent) er
 				zap.String("playerId", event.PlayerID),
 				zap.Error(err),
 			)
-			continue // Continue with other rules
+			continue
 		}
 
-		// Store the grade
 		grade := progressgrades.Grade{
-			Color:      result.Color,
+			Status:     result.Status,
 			RuleID:     rule.ID(),
 			ReasonCode: result.ReasonCode,
 			Metrics:    result.Metrics,
@@ -71,7 +100,7 @@ func (e *Evaluator) EvaluateAndStore(ctx context.Context, event TriggerEvent) er
 			zap.String("rule", rule.ID()),
 			zap.String("playerId", event.PlayerID),
 			zap.String("pointId", rule.PointID()),
-			zap.String("color", result.Color),
+			zap.String("status", result.Status),
 		)
 	}
 

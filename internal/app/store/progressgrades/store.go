@@ -13,19 +13,20 @@ import (
 
 // Grade represents a single progress point grade.
 type Grade struct {
-	Color      string         `bson:"color"`               // "green" or "yellow"
-	ComputedAt time.Time      `bson:"computedAt"`          // When grade was computed
-	RuleID     string         `bson:"ruleId"`              // e.g., "u1p1_v1"
+	Status     string         `bson:"status"`               // "active", "passed", or "flagged"
+	ComputedAt time.Time      `bson:"computedAt"`           // When grade was computed
+	RuleID     string         `bson:"ruleId"`               // e.g., "u1p1_v2"
 	ReasonCode string         `bson:"reasonCode,omitempty"` // e.g., "TOO_MANY_TARGETS"
-	Metrics    map[string]any `bson:"metrics,omitempty"`   // e.g., {countTargets: 9, threshold: 6}
+	Metrics    map[string]any `bson:"metrics,omitempty"`    // e.g., {countTargets: 9, threshold: 6}
 }
 
 // PlayerGrades represents all grades for a single player.
 type PlayerGrades struct {
-	Game        string           `bson:"game"`        // Game identifier
-	PlayerID    string           `bson:"playerId"`    // Player identifier
-	Grades      map[string]Grade `bson:"grades"`      // Map of point ID to grade
-	LastUpdated time.Time        `bson:"lastUpdated"` // When document was last modified
+	Game        string           `bson:"game"`                  // Game identifier
+	PlayerID    string           `bson:"playerId"`              // Player identifier
+	Grades      map[string]Grade `bson:"grades"`                // Map of point ID to grade
+	CurrentUnit string           `bson:"currentUnit,omitempty"` // Unit the student is currently in
+	LastUpdated time.Time        `bson:"lastUpdated"`           // When document was last modified
 }
 
 // Store handles progress grades persistence.
@@ -58,6 +59,78 @@ func (s *Store) UpsertGrade(ctx context.Context, game, playerID, pointID string,
 		"$set": bson.M{
 			"grades." + pointID: grade,
 			"lastUpdated":       now,
+		},
+		"$setOnInsert": bson.M{
+			"game":     game,
+			"playerId": playerID,
+		},
+	}
+
+	_, err := s.coll.UpdateOne(ctx, filter, update, options.Update().SetUpsert(true))
+	return err
+}
+
+// SetActiveIfPending sets a grade to "active" only if no grade exists yet for this point,
+// or the existing grade is already "active". Does not overwrite passed/flagged grades.
+func (s *Store) SetActiveIfPending(ctx context.Context, game, playerID, pointID, ruleID string) error {
+	now := time.Now().UTC()
+	grade := Grade{
+		Status:     "active",
+		ComputedAt: now,
+		RuleID:     ruleID,
+	}
+
+	// Step 1: Try to update existing doc where this grade is absent or already active.
+	// Cannot use $or with upsert, so this is a plain update (no upsert).
+	filter := bson.M{
+		"game":     game,
+		"playerId": playerID,
+		"$or": []bson.M{
+			{"grades." + pointID: bson.M{"$exists": false}},
+			{"grades." + pointID + ".status": "active"},
+		},
+	}
+	update := bson.M{
+		"$set": bson.M{
+			"grades." + pointID: grade,
+			"lastUpdated":       now,
+		},
+	}
+
+	result, err := s.coll.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return err
+	}
+	if result.MatchedCount > 0 {
+		return nil
+	}
+
+	// Step 2: Doc may not exist yet — upsert with simple filter.
+	// Uses $setOnInsert so the grade is only written on a new doc (won't overwrite
+	// an existing doc that has a passed/flagged grade for this point).
+	upsertFilter := bson.M{"game": game, "playerId": playerID}
+	upsertUpdate := bson.M{
+		"$setOnInsert": bson.M{
+			"game":              game,
+			"playerId":          playerID,
+			"grades." + pointID: grade,
+			"lastUpdated":       now,
+		},
+	}
+
+	_, err = s.coll.UpdateOne(ctx, upsertFilter, upsertUpdate, options.Update().SetUpsert(true))
+	return err
+}
+
+// SetCurrentUnit updates the unit the student is currently in.
+func (s *Store) SetCurrentUnit(ctx context.Context, game, playerID, unitID string) error {
+	now := time.Now().UTC()
+
+	filter := bson.M{"game": game, "playerId": playerID}
+	update := bson.M{
+		"$set": bson.M{
+			"currentUnit": unitID,
+			"lastUpdated": now,
 		},
 		"$setOnInsert": bson.M{
 			"game":     game,

@@ -1,4 +1,3 @@
-// internal/app/rules/u2p3.go
 package rules
 
 import (
@@ -7,80 +6,40 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-// U2P3Rule: "Finding Tera & Aryn"
-// Trigger: DialogueNodeEvent:22:18
-// Logic: Attempt-based with START/END window
-//   - END = latest trigger DialogueNodeEvent:22:18
-//   - START = latest DialogueNodeEvent:20:33 before END
-//   - Count TARGET_KEYS in window
-// TARGET_KEYS: 33 keys (see targetKeys list below)
-// Green: count <= 6
-// Yellow: count > 6
-type U2P3Rule struct {
-	BaseRule
-}
+// U2P3Rule — Getting the Band Back Together Part II: Count wrong-direction prompts.
+// Uses start/end windowing with DialogueNodeEvent:20:33 as activity start.
+// Green if count <= 6; Flagged if > 6.
+type U2P3Rule struct{ BaseRule }
 
-// NewU2P3Rule creates a new U2P3 rule.
 func NewU2P3Rule() *U2P3Rule {
-	return &U2P3Rule{
-		BaseRule: NewBaseRule(2, 3, "v1", []string{"DialogueNodeEvent:22:18"}),
-	}
+	return &U2P3Rule{NewBaseRule(2, 3, "v2",
+		[]string{"DialogueNodeEvent:20:26"},
+		[]string{"DialogueNodeEvent:22:18"},
+	)}
 }
 
-const u2p3Threshold = 6
-
-// Evaluate checks target count against threshold.
 func (r *U2P3Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string) (Result, error) {
 	helper := NewLogDataHelper(db, game)
 
-	// Get the window between DialogueNodeEvent:20:33 (START) and DialogueNodeEvent:22:18 (END)
-	startKey := "DialogueNodeEvent:20:33"
-	endKey := "DialogueNodeEvent:22:18"
-	window, err := helper.GetWindowBetweenEvents(ctx, playerID, startKey, endKey)
+	window, err := helper.GetWindowBetweenEvents(ctx, playerID, "DialogueNodeEvent:20:33", "DialogueNodeEvent:22:18")
 	if err != nil {
 		return Result{}, err
 	}
 	if window == nil {
-		return Yellow("NO_WINDOW", map[string]any{
-			"reason": "Missing start or end event for window",
-		}), nil
+		return Flagged("NO_TRIGGER", nil), nil
 	}
 
-	// Count target keys in window (33 keys from the rules document)
 	targetKeys := []string{
-		"DialogueNodeEvent:22:6",
-		"DialogueNodeEvent:22:7",
-		"DialogueNodeEvent:22:8",
-		"DialogueNodeEvent:22:9",
-		"DialogueNodeEvent:22:10",
-		"DialogueNodeEvent:22:11",
-		"DialogueNodeEvent:22:12",
-		"DialogueNodeEvent:22:13",
-		"DialogueNodeEvent:22:14",
-		"DialogueNodeEvent:22:15",
-		"DialogueNodeEvent:22:16",
-		"DialogueNodeEvent:22:17",
-		"DialogueNodeEvent:22:19",
-		"DialogueNodeEvent:22:20",
-		"DialogueNodeEvent:22:21",
-		"DialogueNodeEvent:22:22",
-		"DialogueNodeEvent:22:23",
-		"DialogueNodeEvent:22:24",
-		"DialogueNodeEvent:22:25",
-		"DialogueNodeEvent:22:26",
-		"DialogueNodeEvent:22:27",
-		"DialogueNodeEvent:22:28",
-		"DialogueNodeEvent:22:29",
-		"DialogueNodeEvent:22:30",
-		"DialogueNodeEvent:22:31",
-		"DialogueNodeEvent:22:32",
-		"DialogueNodeEvent:22:33",
-		"DialogueNodeEvent:22:34",
-		"DialogueNodeEvent:22:35",
-		"DialogueNodeEvent:22:36",
-		"DialogueNodeEvent:22:37",
-		"DialogueNodeEvent:22:38",
-		"DialogueNodeEvent:22:39",
+		"DialogueNodeEvent:18:225", "DialogueNodeEvent:28:185", "DialogueNodeEvent:59:185",
+		"DialogueNodeEvent:28:184", "DialogueNodeEvent:28:191", "DialogueNodeEvent:59:184", "DialogueNodeEvent:59:191",
+		"DialogueNodeEvent:18:226", "DialogueNodeEvent:18:227", "DialogueNodeEvent:28:186", "DialogueNodeEvent:59:186",
+		"DialogueNodeEvent:18:228", "DialogueNodeEvent:28:187", "DialogueNodeEvent:59:187",
+		"DialogueNodeEvent:18:229", "DialogueNodeEvent:28:188", "DialogueNodeEvent:59:188",
+		"DialogueNodeEvent:18:230", "DialogueNodeEvent:28:180", "DialogueNodeEvent:59:180",
+		"DialogueNodeEvent:18:233", "DialogueNodeEvent:28:192", "DialogueNodeEvent:59:192",
+		"DialogueNodeEvent:18:234", "DialogueNodeEvent:28:193", "DialogueNodeEvent:59:193",
+		"DialogueNodeEvent:18:235", "DialogueNodeEvent:28:194", "DialogueNodeEvent:59:194",
+		"DialogueNodeEvent:18:236", "DialogueNodeEvent:18:237", "DialogueNodeEvent:28:190", "DialogueNodeEvent:59:190",
 	}
 
 	count, err := helper.CountEventsInWindow(ctx, playerID, targetKeys, window)
@@ -88,12 +47,8 @@ func (r *U2P3Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playe
 		return Result{}, err
 	}
 
-	if count > u2p3Threshold {
-		return Yellow("TOO_MANY_TARGETS", map[string]any{
-			"countTargets": count,
-			"threshold":    u2p3Threshold,
-		}), nil
+	if count <= 6 {
+		return Passed(), nil
 	}
-
-	return Green(), nil
+	return Flagged("BAD_FEEDBACK", map[string]any{"triggering_number": count}), nil
 }

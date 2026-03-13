@@ -286,15 +286,124 @@ func (s *Store) CountByEventKeysInIDWindow(ctx context.Context, game, playerID s
 }
 
 // ExistsByEventTypeAndDataInIDWindow checks for eventType + data.field match in window.
-// Used for rules that need to check event type and data fields (e.g., U3P3 bonus).
 func (s *Store) ExistsByEventTypeAndDataInIDWindow(ctx context.Context, game, playerID, eventType, dataField, dataValue string, startID, endID primitive.ObjectID) (bool, error) {
 	filter := bson.M{
-		"game":             game,
-		"playerId":         playerID,
-		"eventType":        eventType,
+		"game":              game,
+		"playerId":          playerID,
+		"eventType":         eventType,
 		"data." + dataField: dataValue,
-		"_id":              bson.M{"$gt": startID, "$lte": endID},
+		"_id":               bson.M{"$gt": startID, "$lte": endID},
 	}
 	count, err := s.coll.CountDocuments(ctx, filter, options.Count().SetLimit(1))
 	return count > 0, err
+}
+
+// CountByEventTypeAndDataInIDWindow counts events matching eventType + data fields in window.
+func (s *Store) CountByEventTypeAndDataInIDWindow(ctx context.Context, game, playerID, eventType string, dataFilter map[string]string, startID, endID primitive.ObjectID) (int64, error) {
+	filter := bson.M{
+		"game":      game,
+		"playerId":  playerID,
+		"eventType": eventType,
+		"_id":       bson.M{"$gt": startID, "$lte": endID},
+	}
+	for field, value := range dataFilter {
+		filter["data."+field] = value
+	}
+	return s.coll.CountDocuments(ctx, filter)
+}
+
+// FindByEventTypeAndDataInIDWindow finds events matching eventType + data fields in window.
+// Returns sorted by _id descending (latest first).
+func (s *Store) FindByEventTypeAndDataInIDWindow(ctx context.Context, game, playerID, eventType string, dataFilter map[string]string, startID, endID primitive.ObjectID) ([]LogEntry, error) {
+	filter := bson.M{
+		"game":      game,
+		"playerId":  playerID,
+		"eventType": eventType,
+		"_id":       bson.M{"$gt": startID, "$lte": endID},
+	}
+	for field, value := range dataFilter {
+		filter["data."+field] = value
+	}
+	opts := options.Find().SetSort(bson.D{{Key: "_id", Value: -1}})
+
+	cur, err := s.coll.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, err
+	}
+	defer cur.Close(ctx)
+
+	var entries []LogEntry
+	if err := cur.All(ctx, &entries); err != nil {
+		return nil, err
+	}
+	return entries, nil
+}
+
+// FindLatestByEventTypeAndDataInIDWindow finds the most recent event matching eventType + data in window.
+func (s *Store) FindLatestByEventTypeAndDataInIDWindow(ctx context.Context, game, playerID, eventType string, dataFilter map[string]string, startID, endID primitive.ObjectID) (*LogEntry, error) {
+	filter := bson.M{
+		"game":      game,
+		"playerId":  playerID,
+		"eventType": eventType,
+		"_id":       bson.M{"$gt": startID, "$lte": endID},
+	}
+	for field, value := range dataFilter {
+		filter["data."+field] = value
+	}
+	opts := options.FindOne().SetSort(bson.D{{Key: "_id", Value: -1}})
+
+	var entry LogEntry
+	err := s.coll.FindOne(ctx, filter, opts).Decode(&entry)
+	if err == mongo.ErrNoDocuments {
+		return nil, nil
+	}
+	return &entry, err
+}
+
+// FindEventPairByEventTypeAndDataInIDWindow finds the first and last events matching
+// eventType + data fields in a window. Used for timing calculations.
+func (s *Store) FindEventPairByEventTypeAndDataInIDWindow(ctx context.Context, game, playerID, eventType string, firstDataFilter, lastDataFilter map[string]string, startID, endID primitive.ObjectID) (first *LogEntry, last *LogEntry, err error) {
+	// Find first matching event
+	firstFilter := bson.M{
+		"game":      game,
+		"playerId":  playerID,
+		"eventType": eventType,
+		"_id":       bson.M{"$gt": startID, "$lte": endID},
+	}
+	for field, value := range firstDataFilter {
+		firstFilter["data."+field] = value
+	}
+	optsFirst := options.FindOne().SetSort(bson.D{{Key: "_id", Value: 1}})
+
+	var firstEntry LogEntry
+	err = s.coll.FindOne(ctx, firstFilter, optsFirst).Decode(&firstEntry)
+	if err == mongo.ErrNoDocuments {
+		return nil, nil, nil
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Find last matching event
+	lastFilter := bson.M{
+		"game":      game,
+		"playerId":  playerID,
+		"eventType": eventType,
+		"_id":       bson.M{"$gt": startID, "$lte": endID},
+	}
+	for field, value := range lastDataFilter {
+		lastFilter["data."+field] = value
+	}
+	optsLast := options.FindOne().SetSort(bson.D{{Key: "_id", Value: -1}})
+
+	var lastEntry LogEntry
+	err = s.coll.FindOne(ctx, lastFilter, optsLast).Decode(&lastEntry)
+	if err == mongo.ErrNoDocuments {
+		return &firstEntry, nil, nil
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return &firstEntry, &lastEntry, nil
 }

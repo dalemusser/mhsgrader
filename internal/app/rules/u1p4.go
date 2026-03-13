@@ -1,4 +1,3 @@
-// internal/app/rules/u1p4.go
 package rules
 
 import (
@@ -7,21 +6,16 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-// U1P4Rule: "Unexpected Turbulence"
-// Trigger: DialogueNodeEvent:33:19
-// Logic: Always green
-type U1P4Rule struct {
-	BaseRule
-}
+// U1P4Rule — What Was That?: Completion-only.
+type U1P4Rule struct{ BaseRule }
 
-// NewU1P4Rule creates a new U1P4 rule.
 func NewU1P4Rule() *U1P4Rule {
-	return &U1P4Rule{
-		BaseRule: NewBaseRule(1, 4, "v1", []string{"DialogueNodeEvent:33:19"}),
-	}
+	return &U1P4Rule{NewBaseRule(1, 4, "v2",
+		[]string{"questActiveEvent:34"},
+		[]string{"DialogueNodeEvent:33:19"},
+	)}
 }
 
-// Evaluate always returns green for this rule.
 func (r *U1P4Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string) (Result, error) {
-	return Green(), nil
+	return Passed(), nil
 }

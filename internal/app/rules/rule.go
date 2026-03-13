@@ -8,22 +8,29 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
+// Status constants for grade outcomes.
+const (
+	StatusActive  = "active"  // Student has started but not completed the activity
+	StatusPassed  = "passed"  // Completed successfully
+	StatusFlagged = "flagged" // Completed with performance concerns needing review
+)
+
 // Result represents the outcome of a rule evaluation.
 type Result struct {
-	Color      string         // "green" or "yellow"
-	ReasonCode string         // e.g., "TOO_MANY_TARGETS" (for yellow)
+	Status     string         // "passed" or "flagged"
+	ReasonCode string         // e.g., "TOO_MANY_TARGETS" (for flagged)
 	Metrics    map[string]any // e.g., {countTargets: 9, threshold: 6}
 }
 
-// Green returns a green result (success).
-func Green() Result {
-	return Result{Color: "green"}
+// Passed returns a passed result (success).
+func Passed() Result {
+	return Result{Status: StatusPassed}
 }
 
-// Yellow returns a yellow result with a reason.
-func Yellow(reasonCode string, metrics map[string]any) Result {
+// Flagged returns a flagged result with a reason.
+func Flagged(reasonCode string, metrics map[string]any) Result {
 	return Result{
-		Color:      "yellow",
+		Status:     StatusFlagged,
 		ReasonCode: reasonCode,
 		Metrics:    metrics,
 	}
@@ -31,7 +38,7 @@ func Yellow(reasonCode string, metrics map[string]any) Result {
 
 // Rule defines the interface for a grading rule.
 type Rule interface {
-	// ID returns the rule's unique identifier (e.g., "u2p3_v1").
+	// ID returns the rule's unique identifier (e.g., "u2p3_v2").
 	ID() string
 
 	// Unit returns the unit number this rule applies to.
@@ -43,11 +50,16 @@ type Rule interface {
 	// PointID returns the combined unit/point identifier (e.g., "u2p3").
 	PointID() string
 
+	// StartKeys returns the eventKeys that mark the start of this activity.
+	// When scanned, these set the point's status to "active".
+	StartKeys() []string
+
 	// TriggerKeys returns the eventKeys that trigger evaluation of this rule.
+	// These are end-of-activity events that produce a "passed" or "flagged" grade.
 	TriggerKeys() []string
 
 	// Evaluate evaluates the rule for a specific player.
-	// Returns a Result indicating green/yellow and any metrics.
+	// Returns a Result indicating passed/flagged and any metrics.
 	Evaluate(ctx context.Context, db *mongo.Database, game, playerID string) (Result, error)
 }
 
@@ -56,23 +68,26 @@ type BaseRule struct {
 	id          string
 	unit        int
 	point       int
+	startKeys   []string
 	triggerKeys []string
 }
 
 // NewBaseRule creates a new base rule.
-func NewBaseRule(unit, point int, version string, triggerKeys []string) BaseRule {
+func NewBaseRule(unit, point int, version string, startKeys, triggerKeys []string) BaseRule {
 	return BaseRule{
 		id:          PointIDFromUnitPoint(unit, point) + "_" + version,
 		unit:        unit,
 		point:       point,
+		startKeys:   startKeys,
 		triggerKeys: triggerKeys,
 	}
 }
 
-func (r BaseRule) ID() string          { return r.id }
-func (r BaseRule) Unit() int           { return r.unit }
-func (r BaseRule) Point() int          { return r.point }
-func (r BaseRule) PointID() string     { return PointIDFromUnitPoint(r.unit, r.point) }
+func (r BaseRule) ID() string            { return r.id }
+func (r BaseRule) Unit() int             { return r.unit }
+func (r BaseRule) Point() int            { return r.point }
+func (r BaseRule) PointID() string       { return PointIDFromUnitPoint(r.unit, r.point) }
+func (r BaseRule) StartKeys() []string   { return r.startKeys }
 func (r BaseRule) TriggerKeys() []string { return r.triggerKeys }
 
 // PointIDFromUnitPoint creates a point ID from unit and point numbers.
