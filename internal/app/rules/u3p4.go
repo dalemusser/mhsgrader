@@ -17,23 +17,16 @@ func NewU3P4Rule() *U3P4Rule {
 	)}
 }
 
-func (r *U3P4Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string) (Result, error) {
+func (r *U3P4Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string, ec EvalContext) (Result, error) {
 	helper := NewLogDataHelper(db, game)
-
-	window, err := helper.GetAttemptWindow(ctx, playerID, "DialogueNodeEvent:73:200")
-	if err != nil {
-		return Result{}, err
-	}
-	if window == nil {
-		return Flagged("NO_TRIGGER", nil), nil
-	}
+	window := ec.Window
 
 	hasGate, err := helper.HasEventInWindow(ctx, playerID, "DialogueNodeEvent:78:24", window)
 	if err != nil {
 		return Result{}, err
 	}
 	if !hasGate {
-		return Flagged("MISSING_SUCCESS_NODE", nil), nil
+		return Flagged("MISSING_SUCCESS_NODE", map[string]any{"mistakeCount": int64(0)}), nil
 	}
 
 	targetKeys := []string{
@@ -48,8 +41,19 @@ func (r *U3P4Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playe
 	}
 
 	// score: 2 if count == 0, 1 if count <= 2, 0 if count >= 3
-	if count <= 2 {
-		return Passed(), nil
+	var score int
+	if count == 0 {
+		score = 2
+	} else if count <= 2 {
+		score = 1
 	}
-	return Flagged("TOO_MANY_NEGATIVES", map[string]any{"attempt_number": count}), nil
+
+	metrics := map[string]any{
+		"score":        score,
+		"mistakeCount": count,
+	}
+	if count <= 2 {
+		return PassedWithMetrics(metrics), nil
+	}
+	return Flagged("TOO_MANY_NEGATIVES", metrics), nil
 }

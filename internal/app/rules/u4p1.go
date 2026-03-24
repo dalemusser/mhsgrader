@@ -18,16 +18,9 @@ func NewU4P1Rule() *U4P1Rule {
 	)}
 }
 
-func (r *U4P1Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string) (Result, error) {
+func (r *U4P1Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string, ec EvalContext) (Result, error) {
 	helper := NewLogDataHelper(db, game)
-
-	window, err := helper.GetAttemptWindow(ctx, playerID, "questActiveEvent:39")
-	if err != nil {
-		return Result{}, err
-	}
-	if window == nil {
-		return Flagged("NO_TRIGGER", nil), nil
-	}
+	window := ec.Window
 
 	score := 0.0
 
@@ -50,17 +43,32 @@ func (r *U4P1Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playe
 		return Result{}, err
 	}
 
+	var puzzleDurationSecs float64
+	var durationBonus float64
 	if startEvent != nil && endEvent != nil {
-		duration := endEvent.ServerTimestamp.Sub(startEvent.ServerTimestamp).Seconds()
-		if duration > 0 && duration <= 30 {
-			score += 1.0
-		} else if duration > 30 && duration <= 90 {
-			score += 0.5
+		puzzleDurationSecs = endEvent.ServerTimestamp.Sub(startEvent.ServerTimestamp).Seconds()
+		if puzzleDurationSecs > 0 && puzzleDurationSecs <= 30 {
+			durationBonus = 1.0
+		} else if puzzleDurationSecs > 30 && puzzleDurationSecs <= 90 {
+			durationBonus = 0.5
 		}
+		score += durationBonus
 	}
 
-	if score >= 1.0 {
-		return Passed(), nil
+	mistakeCount := int64(0)
+	if !hasCorrect {
+		mistakeCount = 1
 	}
-	return Flagged("SCORE_BELOW_THRESHOLD", map[string]any{"score": score}), nil
+
+	metrics := map[string]any{
+		"hasCorrectAnswer":   hasCorrect,
+		"puzzleDurationSecs": puzzleDurationSecs,
+		"durationBonus":      durationBonus,
+		"score":              score,
+		"mistakeCount":       mistakeCount,
+	}
+	if score >= 1.0 {
+		return PassedWithMetrics(metrics), nil
+	}
+	return Flagged("SCORE_BELOW_THRESHOLD", metrics), nil
 }

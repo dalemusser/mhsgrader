@@ -18,24 +18,22 @@ func NewU3P1Rule() *U3P1Rule {
 	)}
 }
 
-func (r *U3P1Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string) (Result, error) {
+func (r *U3P1Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string, ec EvalContext) (Result, error) {
 	helper := NewLogDataHelper(db, game)
-
-	window, err := helper.GetAttemptWindow(ctx, playerID, "DialogueNodeEvent:11:22")
-	if err != nil {
-		return Result{}, err
-	}
-	if window == nil {
-		return Flagged("NO_TRIGGER", nil), nil
-	}
+	window := ec.Window
 
 	count, err := helper.CountEventInIDWindow(ctx, playerID, "DialogueNodeEvent:10:30", window)
 	if err != nil {
 		return Result{}, err
 	}
 
-	if count > 1 {
-		return Passed(), nil
+	metrics := map[string]any{
+		"count":        count,
+		"mistakeCount": 3 - count,
 	}
-	return Flagged("TOO_MANY_NEGATIVES", map[string]any{"attempt_number": 3 - count}), nil
+	if count > 1 {
+		metrics["mistakeCount"] = int64(0)
+		return PassedWithMetrics(metrics), nil
+	}
+	return Flagged("TOO_MANY_NEGATIVES", metrics), nil
 }

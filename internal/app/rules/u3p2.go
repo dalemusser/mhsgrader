@@ -28,16 +28,9 @@ func cappedPenalty(cnt int64) int {
 	return 2
 }
 
-func (r *U3P2Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string) (Result, error) {
+func (r *U3P2Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string, ec EvalContext) (Result, error) {
 	helper := NewLogDataHelper(db, game)
-
-	window, err := helper.GetAttemptWindow(ctx, playerID, "DialogueNodeEvent:11:34")
-	if err != nil {
-		return Result{}, err
-	}
-	if window == nil {
-		return Flagged("NO_TRIGGER", nil), nil
-	}
+	window := ec.Window
 
 	c27, err := helper.CountEventInIDWindow(ctx, playerID, "DialogueNodeEvent:11:27", window)
 	if err != nil {
@@ -56,8 +49,16 @@ func (r *U3P2Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playe
 
 	score := 5 - cappedPenalty(c27) - cappedPenalty(c29+c230)
 
-	if score >= 3 {
-		return Passed(), nil
+	totalMistakes := c27 + c29 + c230
+	metrics := map[string]any{
+		"c27":          c27,
+		"c29":          c29,
+		"c230":         c230,
+		"score":        score,
+		"mistakeCount": totalMistakes,
 	}
-	return Flagged("BAD_FEEDBACK", map[string]any{"attempt_number": c27 + c29 + c230}), nil
+	if score >= 3 {
+		return PassedWithMetrics(metrics), nil
+	}
+	return Flagged("BAD_FEEDBACK", metrics), nil
 }

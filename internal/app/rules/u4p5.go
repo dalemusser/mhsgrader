@@ -16,16 +16,9 @@ func NewU4P5Rule() *U4P5Rule {
 	)}
 }
 
-func (r *U4P5Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string) (Result, error) {
+func (r *U4P5Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string, ec EvalContext) (Result, error) {
 	helper := NewLogDataHelper(db, game)
-
-	window, err := helper.GetAttemptWindow(ctx, playerID, "questActiveEvent:41")
-	if err != nil {
-		return Result{}, err
-	}
-	if window == nil {
-		return Flagged("NO_TRIGGER", nil), nil
-	}
+	window := ec.Window
 
 	posKeys := []string{"DialogueNodeEvent:90:50", "DialogueNodeEvent:90:57"}
 	hasPos, err := helper.HasAnyEventInWindow(ctx, playerID, posKeys, window)
@@ -34,7 +27,7 @@ func (r *U4P5Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playe
 	}
 
 	if !hasPos {
-		return Flagged("MISSING_SUCCESS_NODE", nil), nil
+		return Flagged("MISSING_SUCCESS_NODE", map[string]any{"mistakeCount": int64(0)}), nil
 	}
 
 	negKeys := []string{
@@ -50,8 +43,8 @@ func (r *U4P5Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playe
 		return Result{}, err
 	}
 
-	if negCount > 4 {
-		return Flagged("TOO_MANY_NEGATIVES", map[string]any{"negativeCount": negCount}), nil
+	if negCount >= 4 {
+		return Flagged("TOO_MANY_NEGATIVES", map[string]any{"mistakeCount": negCount}), nil
 	}
-	return Passed(), nil
+	return PassedWithMetrics(map[string]any{"mistakeCount": negCount}), nil
 }

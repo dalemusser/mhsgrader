@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/dalemusser/mhsgrader/internal/app/rules"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.uber.org/zap"
 )
@@ -21,13 +22,13 @@ type Engine struct {
 
 // NewEngine creates a new grading engine.
 // logDB is used for reading logs (stratalog), gradesDB is used for storing grades (mhsgrader).
-func NewEngine(logDB, gradesDB *mongo.Database, logger *zap.Logger, game string, scanInterval time.Duration, batchSize int) *Engine {
+func NewEngine(logDB, gradesDB *mongo.Database, logger *zap.Logger, game string, scanInterval time.Duration, batchSize int, activeGapThreshold time.Duration) *Engine {
 	registry := rules.DefaultRegistry()
 	graderID := game + "-grader"
 
 	return &Engine{
 		scanner:      NewScanner(logDB, gradesDB, logger, graderID, game, batchSize),
-		evaluator:    NewEvaluator(logDB, gradesDB, registry, logger, game),
+		evaluator:    NewEvaluator(logDB, gradesDB, registry, logger, game, activeGapThreshold),
 		registry:     registry,
 		scanInterval: scanInterval,
 		logger:       logger,
@@ -67,7 +68,7 @@ func (e *Engine) Run(ctx context.Context) error {
 // tick performs one scan-evaluate cycle.
 func (e *Engine) tick(ctx context.Context, triggerKeys []string) error {
 	// Scan for new triggers
-	events, lastID, err := e.scanner.Scan(ctx, triggerKeys)
+	events, _, err := e.scanner.Scan(ctx, triggerKeys)
 	if err != nil {
 		return err
 	}
@@ -80,20 +81,30 @@ func (e *Engine) tick(ctx context.Context, triggerKeys []string) error {
 		zap.Int("count", len(events)),
 	)
 
-	// Evaluate each trigger
+	// Evaluate each trigger, stopping at first failure so the cursor
+	// doesn't advance past events that weren't successfully processed.
+	var lastSuccessID primitive.ObjectID
+	anySuccess := false
 	for _, event := range events {
 		if err := e.evaluator.EvaluateAndStore(ctx, event); err != nil {
-			e.logger.Error("evaluation failed",
+			e.logger.Error("evaluation failed, stopping batch",
 				zap.String("eventKey", event.EventKey),
 				zap.String("playerId", event.PlayerID),
 				zap.Error(err),
 			)
-			// Continue with other events
+			break
 		}
+		lastSuccessID = event.ID
+		anySuccess = true
 	}
 
-	// Update cursor after processing
-	if err := e.scanner.UpdateCursor(ctx, lastID); err != nil {
+	if !anySuccess {
+		// First event failed — don't advance cursor at all
+		return nil
+	}
+
+	// Update cursor to the last successfully processed event
+	if err := e.scanner.UpdateCursor(ctx, lastSuccessID); err != nil {
 		e.logger.Error("failed to update cursor", zap.Error(err))
 		return err
 	}

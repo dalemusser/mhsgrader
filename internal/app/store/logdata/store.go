@@ -203,12 +203,75 @@ func (s *Store) FindByEventKeyInWindow(ctx context.Context, game, playerID, even
 // _id-based windowing methods for replay-safe grading
 // ============================================================================
 
+// FindAllInIDWindow returns all log entries for a player in _id range [startID, endID],
+// sorted by _id ascending. Used for active duration calculation.
+func (s *Store) FindAllInIDWindow(ctx context.Context, game, playerID string, startID, endID primitive.ObjectID) ([]LogEntry, error) {
+	filter := bson.M{
+		"game":     game,
+		"playerId": playerID,
+		"_id":      bson.M{"$gte": startID, "$lte": endID},
+	}
+	opts := options.Find().
+		SetSort(bson.D{{Key: "_id", Value: 1}}).
+		SetProjection(bson.M{"_id": 1, "serverTimestamp": 1})
+
+	cur, err := s.coll.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, err
+	}
+	defer cur.Close(ctx)
+
+	var entries []LogEntry
+	if err := cur.All(ctx, &entries); err != nil {
+		return nil, err
+	}
+	return entries, nil
+}
+
 // GetLatestByEventKey gets the most recent log by _id (not timestamp).
 func (s *Store) GetLatestByEventKey(ctx context.Context, game, playerID, eventKey string) (*LogEntry, error) {
 	filter := bson.M{
 		"game":     game,
 		"playerId": playerID,
 		"eventKey": eventKey,
+	}
+	opts := options.FindOne().SetSort(bson.D{{Key: "_id", Value: -1}})
+
+	var entry LogEntry
+	err := s.coll.FindOne(ctx, filter, opts).Decode(&entry)
+	if err == mongo.ErrNoDocuments {
+		return nil, nil
+	}
+	return &entry, err
+}
+
+// GetLatestByEventKeys gets the most recent log matching any of the given eventKeys, by _id.
+// Used to find the most recent start event when a rule has multiple start keys.
+func (s *Store) GetLatestByEventKeys(ctx context.Context, game, playerID string, eventKeys []string) (*LogEntry, error) {
+	filter := bson.M{
+		"game":     game,
+		"playerId": playerID,
+		"eventKey": bson.M{"$in": eventKeys},
+	}
+	opts := options.FindOne().SetSort(bson.D{{Key: "_id", Value: -1}})
+
+	var entry LogEntry
+	err := s.coll.FindOne(ctx, filter, opts).Decode(&entry)
+	if err == mongo.ErrNoDocuments {
+		return nil, nil
+	}
+	return &entry, err
+}
+
+// GetLatestByEventKeysBefore gets the most recent log matching any of the given
+// eventKeys that occurred before the given _id. This ensures we find the correct
+// start event even if the player has replayed content (newer start after end).
+func (s *Store) GetLatestByEventKeysBefore(ctx context.Context, game, playerID string, eventKeys []string, beforeID primitive.ObjectID) (*LogEntry, error) {
+	filter := bson.M{
+		"game":     game,
+		"playerId": playerID,
+		"eventKey": bson.M{"$in": eventKeys},
+		"_id":      bson.M{"$lt": beforeID},
 	}
 	opts := options.FindOne().SetSort(bson.D{{Key: "_id", Value: -1}})
 

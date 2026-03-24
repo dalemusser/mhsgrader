@@ -84,6 +84,7 @@ func main() {
 		appCfg.Game,
 		appCfg.ScanInterval,
 		appCfg.BatchSize,
+		appCfg.ActiveGapThreshold,
 	)
 
 	// Handle graceful shutdown
@@ -119,13 +120,13 @@ func performReset(ctx context.Context, db *mongo.Database, game string, logger *
 	}
 	logger.Info("cleared grader_state cursor", zap.String("graderID", graderID))
 
-	// 2. Delete all grades
+	// 2. Delete grades for this game only
 	gradesStore := progressgrades.New(db)
-	count, err := gradesStore.DeleteAll(ctx)
+	count, err := gradesStore.DeleteByGame(ctx, game)
 	if err != nil {
 		return fmt.Errorf("delete grades: %w", err)
 	}
-	logger.Info("cleared progress_point_grades", zap.Int64("deleted", count))
+	logger.Info("cleared progress_point_grades", zap.String("game", game), zap.Int64("deleted", count))
 
 	return nil
 }

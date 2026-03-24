@@ -16,16 +16,9 @@ func NewU2P4Rule() *U2P4Rule {
 	)}
 }
 
-func (r *U2P4Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string) (Result, error) {
+func (r *U2P4Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string, ec EvalContext) (Result, error) {
 	helper := NewLogDataHelper(db, game)
-
-	window, err := helper.GetAttemptWindow(ctx, playerID, "DialogueNodeEvent:23:17")
-	if err != nil {
-		return Result{}, err
-	}
-	if window == nil {
-		return Flagged("NO_TRIGGER", nil), nil
-	}
+	window := ec.Window
 
 	successKey := "DialogueNodeEvent:74:21"
 	badKeys := []string{
@@ -40,16 +33,16 @@ func (r *U2P4Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playe
 		return Result{}, err
 	}
 
-	hasBad, err := helper.HasAnyEventInWindow(ctx, playerID, badKeys, window)
+	badCount, err := helper.CountEventsInWindow(ctx, playerID, badKeys, window)
 	if err != nil {
 		return Result{}, err
 	}
 
-	if hasSuccess && !hasBad {
-		return Passed(), nil
+	if hasSuccess && badCount == 0 {
+		return PassedWithMetrics(map[string]any{"mistakeCount": int64(0)}), nil
 	}
 	if !hasSuccess {
-		return Flagged("MISSING_SUCCESS_NODE", nil), nil
+		return Flagged("MISSING_SUCCESS_NODE", map[string]any{"mistakeCount": badCount}), nil
 	}
-	return Flagged("TOO_MANY_NEGATIVES", nil), nil
+	return Flagged("TOO_MANY_NEGATIVES", map[string]any{"mistakeCount": badCount}), nil
 }

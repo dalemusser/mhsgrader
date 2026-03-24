@@ -17,16 +17,9 @@ func NewU2P2Rule() *U2P2Rule {
 	)}
 }
 
-func (r *U2P2Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string) (Result, error) {
+func (r *U2P2Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string, ec EvalContext) (Result, error) {
 	helper := NewLogDataHelper(db, game)
-
-	window, err := helper.GetAttemptWindow(ctx, playerID, "DialogueNodeEvent:20:26")
-	if err != nil {
-		return Result{}, err
-	}
-	if window == nil {
-		return Flagged("NO_TRIGGER", nil), nil
-	}
+	window := ec.Window
 
 	targetKeys := []string{
 		"DialogueNodeEvent:18:99",
@@ -46,7 +39,7 @@ func (r *U2P2Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playe
 	}
 
 	if count <= 1 {
-		return Passed(), nil
+		return PassedWithMetrics(map[string]any{"mistakeCount": count}), nil
 	}
-	return Flagged("BAD_FEEDBACK", map[string]any{"triggering_number": count}), nil
+	return Flagged("BAD_FEEDBACK", map[string]any{"mistakeCount": count}), nil
 }

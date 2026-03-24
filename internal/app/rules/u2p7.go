@@ -16,16 +16,9 @@ func NewU2P7Rule() *U2P7Rule {
 	)}
 }
 
-func (r *U2P7Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string) (Result, error) {
+func (r *U2P7Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string, ec EvalContext) (Result, error) {
 	helper := NewLogDataHelper(db, game)
-
-	window, err := helper.GetAttemptWindow(ctx, playerID, "questFinishEvent:54")
-	if err != nil {
-		return Result{}, err
-	}
-	if window == nil {
-		return Flagged("NO_TRIGGER", nil), nil
-	}
+	window := ec.Window
 
 	successKey := "DialogueNodeEvent:27:7"
 	negKeys := []string{
@@ -49,7 +42,7 @@ func (r *U2P7Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playe
 	}
 
 	if hasSuccess && negCount <= 3 {
-		return Passed(), nil
+		return PassedWithMetrics(map[string]any{"mistakeCount": negCount}), nil
 	}
-	return Flagged("WRONG_ARG_SELECTED", map[string]any{"attempt_number": negCount}), nil
+	return Flagged("WRONG_ARG_SELECTED", map[string]any{"mistakeCount": negCount}), nil
 }

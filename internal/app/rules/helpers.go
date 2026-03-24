@@ -68,69 +68,6 @@ func ZeroID() primitive.ObjectID {
 	return primitive.ObjectID{}
 }
 
-// GetAttemptWindow finds the current attempt window for a trigger.
-// Returns window from previous trigger (exclusive) to latest trigger (inclusive).
-// If no previous trigger exists, StartID is zero (unbounded start).
-func (h *LogDataHelper) GetAttemptWindow(ctx context.Context, playerID, triggerKey string) (*AttemptWindow, error) {
-	// Get the latest trigger event
-	latest, err := h.store.GetLatestByEventKey(ctx, h.game, playerID, triggerKey)
-	if err != nil {
-		return nil, err
-	}
-	if latest == nil {
-		// No trigger found
-		return nil, nil
-	}
-
-	// Get the previous trigger event (before the latest)
-	previous, err := h.store.GetPreviousByEventKey(ctx, h.game, playerID, triggerKey, latest.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	window := &AttemptWindow{
-		EndID: latest.ID,
-	}
-	if previous != nil {
-		window.StartID = previous.ID
-	}
-	// If no previous, StartID remains zero (unbounded start)
-
-	return window, nil
-}
-
-// GetWindowBetweenEvents finds an attempt window between two different event types.
-// START = latest startKey before END; END = latest endKey.
-// Returns nil if either start or end event is not found.
-func (h *LogDataHelper) GetWindowBetweenEvents(ctx context.Context, playerID, startKey, endKey string) (*AttemptWindow, error) {
-	// Get the latest end event
-	endEvent, err := h.store.GetLatestByEventKey(ctx, h.game, playerID, endKey)
-	if err != nil {
-		return nil, err
-	}
-	if endEvent == nil {
-		return nil, nil
-	}
-
-	// Get the latest start event before the end event
-	startEvent, err := h.store.GetPreviousByEventKey(ctx, h.game, playerID, startKey, endEvent.ID)
-	if err != nil {
-		return nil, err
-	}
-	if startEvent == nil {
-		// No start event before end - use zero ID (unbounded start)
-		return &AttemptWindow{
-			StartID: ZeroID(),
-			EndID:   endEvent.ID,
-		}, nil
-	}
-
-	return &AttemptWindow{
-		StartID: startEvent.ID,
-		EndID:   endEvent.ID,
-	}, nil
-}
-
 // HasEventInWindow checks if event exists within attempt window.
 func (h *LogDataHelper) HasEventInWindow(ctx context.Context, playerID, eventKey string, w *AttemptWindow) (bool, error) {
 	if w == nil {

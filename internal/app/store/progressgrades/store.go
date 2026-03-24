@@ -13,20 +13,25 @@ import (
 
 // Grade represents a single progress point grade.
 type Grade struct {
-	Status     string         `bson:"status"`               // "active", "passed", or "flagged"
-	ComputedAt time.Time      `bson:"computedAt"`           // When grade was computed
-	RuleID     string         `bson:"ruleId"`               // e.g., "u1p1_v2"
-	ReasonCode string         `bson:"reasonCode,omitempty"` // e.g., "TOO_MANY_TARGETS"
-	Metrics    map[string]any `bson:"metrics,omitempty"`    // e.g., {countTargets: 9, threshold: 6}
+	Attempt            int            `bson:"attempt"`                      // 1-based attempt number
+	Status             string         `bson:"status"`                       // "active", "passed", or "flagged"
+	ComputedAt         time.Time      `bson:"computedAt"`                   // When grade was computed
+	RuleID             string         `bson:"ruleId"`                       // e.g., "u1p1_v2"
+	ReasonCode         string         `bson:"reasonCode,omitempty"`         // e.g., "TOO_MANY_TARGETS"
+	Metrics            map[string]any `bson:"metrics,omitempty"`            // e.g., {countTargets: 9, threshold: 6}
+	StartTime          *time.Time     `bson:"startTime,omitempty"`          // Activity start
+	EndTime            *time.Time     `bson:"endTime,omitempty"`            // Activity end
+	DurationSecs       *float64       `bson:"durationSecs,omitempty"`       // Wall-clock time to complete (seconds)
+	ActiveDurationSecs *float64       `bson:"activeDurationSecs,omitempty"` // Active time excluding gaps (seconds)
 }
 
 // PlayerGrades represents all grades for a single player.
 type PlayerGrades struct {
-	Game        string           `bson:"game"`                  // Game identifier
-	PlayerID    string           `bson:"playerId"`              // Player identifier
-	Grades      map[string]Grade `bson:"grades"`                // Map of point ID to grade
-	CurrentUnit string           `bson:"currentUnit,omitempty"` // Unit the student is currently in
-	LastUpdated time.Time        `bson:"lastUpdated"`           // When document was last modified
+	Game        string             `bson:"game"`                  // Game identifier
+	PlayerID    string             `bson:"playerId"`              // Player identifier
+	Grades      map[string][]Grade `bson:"grades"`                // Map of point ID to array of attempt grades
+	CurrentUnit string             `bson:"currentUnit,omitempty"` // Unit the student is currently in
+	LastUpdated time.Time          `bson:"lastUpdated"`           // When document was last modified
 }
 
 // Store handles progress grades persistence.
@@ -49,76 +54,117 @@ func (s *Store) GetForPlayer(ctx context.Context, game, playerID string) (*Playe
 	return &pg, err
 }
 
-// UpsertGrade updates or inserts a grade for a specific progress point.
-func (s *Store) UpsertGrade(ctx context.Context, game, playerID, pointID string, grade Grade) error {
+// AppendGrade appends or replaces the latest grade for a progress point.
+// If the last element for this point has status "active", it is replaced with the final grade
+// (preserving the attempt number). Otherwise, a new grade is appended.
+func (s *Store) AppendGrade(ctx context.Context, game, playerID, pointID string, grade Grade) error {
 	now := time.Now().UTC()
 	grade.ComputedAt = now
 
-	filter := bson.M{"game": game, "playerId": playerID}
-	update := bson.M{
-		"$set": bson.M{
-			"grades." + pointID: grade,
-			"lastUpdated":       now,
-		},
-		"$setOnInsert": bson.M{
-			"game":     game,
-			"playerId": playerID,
-		},
+	// Read current doc to determine array state
+	pg, err := s.GetForPlayer(ctx, game, playerID)
+	if err != nil {
+		return err
 	}
 
-	_, err := s.coll.UpdateOne(ctx, filter, update, options.Update().SetUpsert(true))
+	filter := bson.M{"game": game, "playerId": playerID}
+
+	if pg != nil {
+		grades := pg.Grades[pointID]
+		if len(grades) > 0 {
+			last := grades[len(grades)-1]
+			if last.Status == "active" {
+				// Replace the active entry, preserving its attempt number
+				grade.Attempt = last.Attempt
+				idx := len(grades) - 1
+				update := bson.M{
+					"$set": bson.M{
+						"grades." + pointID + "." + itoa(idx): grade,
+						"lastUpdated": now,
+					},
+				}
+				_, err := s.coll.UpdateOne(ctx, filter, update)
+				return err
+			}
+			// Append new grade with next attempt number
+			grade.Attempt = len(grades) + 1
+		} else {
+			// No array for this point yet
+			grade.Attempt = 1
+		}
+
+		update := bson.M{
+			"$push": bson.M{"grades." + pointID: grade},
+			"$set":  bson.M{"lastUpdated": now},
+		}
+		_, err := s.coll.UpdateOne(ctx, filter, update)
+		return err
+	}
+
+	// No doc exists — create with first grade
+	grade.Attempt = 1
+	doc := PlayerGrades{
+		Game:        game,
+		PlayerID:    playerID,
+		Grades:      map[string][]Grade{pointID: {grade}},
+		LastUpdated: now,
+	}
+	_, err = s.coll.InsertOne(ctx, doc)
 	return err
 }
 
-// SetActiveIfPending sets a grade to "active" only if no grade exists yet for this point,
-// or the existing grade is already "active". Does not overwrite passed/flagged grades.
-func (s *Store) SetActiveIfPending(ctx context.Context, game, playerID, pointID, ruleID string) error {
+// AppendActiveIfNeeded appends an "active" grade if the point needs one.
+// No-op if the last element is already "active".
+// Appends a new active grade if last element is "passed" or "flagged" (new attempt).
+// Creates doc with active grade if no doc exists.
+func (s *Store) AppendActiveIfNeeded(ctx context.Context, game, playerID, pointID, ruleID string, startTime *time.Time) error {
 	now := time.Now().UTC()
+
+	pg, err := s.GetForPlayer(ctx, game, playerID)
+	if err != nil {
+		return err
+	}
+
 	grade := Grade{
 		Status:     "active",
 		ComputedAt: now,
 		RuleID:     ruleID,
+		StartTime:  startTime,
 	}
 
-	// Step 1: Try to update existing doc where this grade is absent or already active.
-	// Cannot use $or with upsert, so this is a plain update (no upsert).
-	filter := bson.M{
-		"game":     game,
-		"playerId": playerID,
-		"$or": []bson.M{
-			{"grades." + pointID: bson.M{"$exists": false}},
-			{"grades." + pointID + ".status": "active"},
-		},
-	}
-	update := bson.M{
-		"$set": bson.M{
-			"grades." + pointID: grade,
-			"lastUpdated":       now,
-		},
-	}
+	filter := bson.M{"game": game, "playerId": playerID}
 
-	result, err := s.coll.UpdateOne(ctx, filter, update)
-	if err != nil {
+	if pg != nil {
+		grades := pg.Grades[pointID]
+		if len(grades) > 0 {
+			last := grades[len(grades)-1]
+			if last.Status == "active" {
+				// Already active — no-op
+				return nil
+			}
+			// Last is passed/flagged — start new attempt
+			grade.Attempt = len(grades) + 1
+		} else {
+			grade.Attempt = 1
+		}
+
+		update := bson.M{
+			"$push": bson.M{"grades." + pointID: grade},
+			"$set":  bson.M{"lastUpdated": now},
+		}
+		_, err := s.coll.UpdateOne(ctx, filter, update)
 		return err
 	}
-	if result.MatchedCount > 0 {
-		return nil
-	}
 
-	// Step 2: Doc may not exist yet — upsert with simple filter.
-	// Uses $setOnInsert so the grade is only written on a new doc (won't overwrite
-	// an existing doc that has a passed/flagged grade for this point).
-	upsertFilter := bson.M{"game": game, "playerId": playerID}
-	upsertUpdate := bson.M{
-		"$setOnInsert": bson.M{
-			"game":              game,
-			"playerId":          playerID,
-			"grades." + pointID: grade,
-			"lastUpdated":       now,
-		},
+	// No doc — create
+	grade.Attempt = 1
+	doc := PlayerGrades{
+		Game:        game,
+		PlayerID:    playerID,
+		Grades:      map[string][]Grade{pointID: {grade}},
+		LastUpdated: now,
 	}
-
-	_, err = s.coll.UpdateOne(ctx, upsertFilter, upsertUpdate, options.Update().SetUpsert(true))
+	_, err = s.coll.InsertOne(ctx, doc)
 	return err
 }
 
@@ -142,16 +188,27 @@ func (s *Store) SetCurrentUnit(ctx context.Context, game, playerID, unitID strin
 	return err
 }
 
-// GetGrade retrieves a specific grade for a player.
-func (s *Store) GetGrade(ctx context.Context, game, playerID, pointID string) (*Grade, error) {
+// GetLatestGrade retrieves the latest grade for a specific point.
+func (s *Store) GetLatestGrade(ctx context.Context, game, playerID, pointID string) (*Grade, error) {
 	pg, err := s.GetForPlayer(ctx, game, playerID)
 	if err != nil || pg == nil {
 		return nil, err
 	}
-	if grade, ok := pg.Grades[pointID]; ok {
-		return &grade, nil
+	grades := pg.Grades[pointID]
+	if len(grades) == 0 {
+		return nil, nil
 	}
-	return nil, nil
+	latest := grades[len(grades)-1]
+	return &latest, nil
+}
+
+// GetGradeHistory retrieves all grades for a specific point.
+func (s *Store) GetGradeHistory(ctx context.Context, game, playerID, pointID string) ([]Grade, error) {
+	pg, err := s.GetForPlayer(ctx, game, playerID)
+	if err != nil || pg == nil {
+		return nil, err
+	}
+	return pg.Grades[pointID], nil
 }
 
 // ListPlayers returns all player IDs that have grades for a game.
@@ -175,11 +232,24 @@ func (s *Store) ListPlayers(ctx context.Context, game string) ([]string, error) 
 	return players, cur.Err()
 }
 
-// DeleteAll removes all grade documents. Returns count of deleted documents.
-func (s *Store) DeleteAll(ctx context.Context) (int64, error) {
-	result, err := s.coll.DeleteMany(ctx, bson.M{})
+// DeleteByGame removes all grade documents for a specific game. Returns count of deleted documents.
+func (s *Store) DeleteByGame(ctx context.Context, game string) (int64, error) {
+	result, err := s.coll.DeleteMany(ctx, bson.M{"game": game})
 	if err != nil {
 		return 0, err
 	}
 	return result.DeletedCount, nil
+}
+
+// itoa converts an int to a string (for building BSON paths).
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	s := ""
+	for n > 0 {
+		s = string(rune('0'+n%10)) + s
+		n /= 10
+	}
+	return s
 }

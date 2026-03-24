@@ -27,6 +27,7 @@ var appConfigKeys = []config.AppKey{
 	{Name: "game", Default: "mhs", Desc: "Game identifier"},
 	{Name: "scan_interval", Default: "5s", Desc: "Poll interval for new logs (e.g., 5s, 10s, 1m)"},
 	{Name: "batch_size", Default: 500, Desc: "Maximum logs to process per scan"},
+	{Name: "active_gap_threshold", Default: "2m", Desc: "Gaps longer than this are excluded from active duration (e.g., 2m, 90s)"},
 }
 
 // LoadConfig loads WAFFLE core config and app-specific config.
@@ -44,9 +45,10 @@ func LoadConfig(logger *zap.Logger) (*config.CoreConfig, AppConfig, error) {
 		LogDatabase:    appValues.String("log_database"),
 		GradesDatabase: appValues.String("grades_database"),
 
-		Game:         appValues.String("game"),
-		ScanInterval: appValues.Duration("scan_interval", 5*time.Second),
-		BatchSize:    appValues.Int("batch_size"),
+		Game:               appValues.String("game"),
+		ScanInterval:       appValues.Duration("scan_interval", 5*time.Second),
+		BatchSize:          appValues.Int("batch_size"),
+		ActiveGapThreshold: appValues.Duration("active_gap_threshold", 2*time.Minute),
 	}
 
 	return coreCfg, appCfg, nil
@@ -69,6 +71,10 @@ func ValidateConfig(coreCfg *config.CoreConfig, appCfg AppConfig, logger *zap.Lo
 
 	if appCfg.BatchSize < 1 {
 		return fmt.Errorf("batch_size must be at least 1")
+	}
+
+	if appCfg.ActiveGapThreshold <= 0 {
+		return fmt.Errorf("active_gap_threshold must be positive")
 	}
 
 	return nil

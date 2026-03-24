@@ -19,16 +19,9 @@ func NewU5P2Rule() *U5P2Rule {
 	)}
 }
 
-func (r *U5P2Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string) (Result, error) {
+func (r *U5P2Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string, ec EvalContext) (Result, error) {
 	helper := NewLogDataHelper(db, game)
-
-	window, err := helper.GetAttemptWindow(ctx, playerID, "DialogueNodeEvent:96:1")
-	if err != nil {
-		return Result{}, err
-	}
-	if window == nil {
-		return Flagged("NO_TRIGGER", nil), nil
-	}
+	window := ec.Window
 
 	// Count WaterChamberEvent for floor 3 (Condenser or Evaporator)
 	cFloor3Cond, err := helper.CountByEventTypeAndData(ctx, playerID, "WaterChamberEvent",
@@ -68,10 +61,15 @@ func (r *U5P2Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playe
 		score += 1
 	}
 
-	if score >= 3 {
-		return Passed(), nil
+	totalAttempts := floor3 + floor4
+	metrics := map[string]any{
+		"floor3Attempts": floor3,
+		"floor4Attempts": floor4,
+		"score":          score,
+		"mistakeCount":   totalAttempts,
 	}
-	return Flagged("SCORE_BELOW_THRESHOLD", map[string]any{
-		"score": score, "floor3_attempts": floor3, "floor4_attempts": floor4,
-	}), nil
+	if score >= 3 {
+		return PassedWithMetrics(metrics), nil
+	}
+	return Flagged("SCORE_BELOW_THRESHOLD", metrics), nil
 }

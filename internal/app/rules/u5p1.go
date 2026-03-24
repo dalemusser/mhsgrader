@@ -16,16 +16,9 @@ func NewU5P1Rule() *U5P1Rule {
 	)}
 }
 
-func (r *U5P1Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string) (Result, error) {
+func (r *U5P1Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string, ec EvalContext) (Result, error) {
 	helper := NewLogDataHelper(db, game)
-
-	window, err := helper.GetAttemptWindow(ctx, playerID, "questFinishEvent:43")
-	if err != nil {
-		return Result{}, err
-	}
-	if window == nil {
-		return Flagged("NO_TRIGGER", nil), nil
-	}
+	window := ec.Window
 
 	successKey := "DialogueNodeEvent:100:44"
 	hasSuccess, err := helper.HasEventInWindow(ctx, playerID, successKey, window)
@@ -45,10 +38,10 @@ func (r *U5P1Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playe
 	}
 
 	if hasSuccess && negCount <= 2 {
-		return Passed(), nil
+		return PassedWithMetrics(map[string]any{"mistakeCount": negCount}), nil
 	}
 	if !hasSuccess {
-		return Flagged("MISSING_SUCCESS_NODE", nil), nil
+		return Flagged("MISSING_SUCCESS_NODE", map[string]any{"mistakeCount": negCount}), nil
 	}
-	return Flagged("TOO_MANY_NEGATIVES", map[string]any{"negativeCount": negCount}), nil
+	return Flagged("TOO_MANY_NEGATIVES", map[string]any{"mistakeCount": negCount}), nil
 }

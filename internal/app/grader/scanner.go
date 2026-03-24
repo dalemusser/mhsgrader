@@ -3,6 +3,7 @@ package grader
 
 import (
 	"context"
+	"time"
 
 	"github.com/dalemusser/mhsgrader/internal/app/store/graderstate"
 	"github.com/dalemusser/mhsgrader/internal/app/store/logdata"
@@ -36,9 +37,10 @@ func NewScanner(logDB, gradesDB *mongo.Database, logger *zap.Logger, graderID, g
 
 // TriggerEvent represents a log event that triggered a rule evaluation.
 type TriggerEvent struct {
-	ID       primitive.ObjectID
-	PlayerID string
-	EventKey string
+	ID              primitive.ObjectID
+	PlayerID        string
+	EventKey        string
+	ServerTimestamp time.Time
 }
 
 // Scan scans for new trigger events.
@@ -64,9 +66,10 @@ func (s *Scanner) Scan(ctx context.Context, triggerKeys []string) ([]TriggerEven
 	events := make([]TriggerEvent, len(entries))
 	for i, entry := range entries {
 		events[i] = TriggerEvent{
-			ID:       entry.ID,
-			PlayerID: entry.PlayerID,
-			EventKey: entry.EventKey,
+			ID:              entry.ID,
+			PlayerID:        entry.PlayerID,
+			EventKey:        entry.EventKey,
+			ServerTimestamp: entry.ServerTimestamp,
 		}
 	}
 

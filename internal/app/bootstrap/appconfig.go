@@ -15,7 +15,8 @@ type AppConfig struct {
 	GradesDatabase string // Database for storing grades (default: mhsgrader)
 
 	// Grader settings
-	Game         string        // Game identifier (default: mhs)
-	ScanInterval time.Duration // Poll interval for new logs (default: 5s)
-	BatchSize    int           // Max logs per scan (default: 500)
+	Game              string        // Game identifier (default: mhs)
+	ScanInterval      time.Duration // Poll interval for new logs (default: 5s)
+	BatchSize         int           // Max logs per scan (default: 500)
+	ActiveGapThreshold time.Duration // Gaps longer than this are excluded from active duration (default: 2m)
 }

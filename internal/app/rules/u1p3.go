@@ -16,29 +16,22 @@ func NewU1P3Rule() *U1P3Rule {
 	)}
 }
 
-func (r *U1P3Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string) (Result, error) {
+func (r *U1P3Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string, ec EvalContext) (Result, error) {
 	helper := NewLogDataHelper(db, game)
-
-	window, err := helper.GetAttemptWindow(ctx, playerID, "questActiveEvent:34")
-	if err != nil {
-		return Result{}, err
-	}
-	if window == nil {
-		return Flagged("NO_TRIGGER", nil), nil
-	}
+	window := ec.Window
 
 	yellowNodes := []string{
 		"DialogueNodeEvent:70:25",
 		"DialogueNodeEvent:70:33",
 	}
 
-	hasYellow, err := helper.HasAnyEventInWindow(ctx, playerID, yellowNodes, window)
+	yellowCount, err := helper.CountEventsInWindow(ctx, playerID, yellowNodes, window)
 	if err != nil {
 		return Result{}, err
 	}
 
-	if hasYellow {
-		return Flagged("WRONG_ARG_SELECTED", nil), nil
+	if yellowCount > 0 {
+		return Flagged("WRONG_ARG_SELECTED", map[string]any{"mistakeCount": yellowCount}), nil
 	}
-	return Passed(), nil
+	return PassedWithMetrics(map[string]any{"mistakeCount": int64(0)}), nil
 }

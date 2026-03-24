@@ -18,16 +18,9 @@ func NewU4P3Rule() *U4P3Rule {
 	)}
 }
 
-func (r *U4P3Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string) (Result, error) {
+func (r *U4P3Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string, ec EvalContext) (Result, error) {
 	helper := NewLogDataHelper(db, game)
-
-	window, err := helper.GetAttemptWindow(ctx, playerID, "questActiveEvent:50")
-	if err != nil {
-		return Result{}, err
-	}
-	if window == nil {
-		return Flagged("NO_TRIGGER", nil), nil
-	}
+	window := ec.Window
 
 	// Count soilMachine events for floor 3, machine 1
 	cFloor3, err := helper.CountByEventTypeAndData(ctx, playerID, "soilMachine",
@@ -53,10 +46,15 @@ func (r *U4P3Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playe
 		score += 1
 	}
 
-	if score > 1 {
-		return Passed(), nil
+	totalAttempts := cFloor3 + cFloor4
+	metrics := map[string]any{
+		"floor3Attempts": cFloor3,
+		"floor4Attempts": cFloor4,
+		"score":          score,
+		"mistakeCount":   totalAttempts,
 	}
-	return Flagged("SCORE_BELOW_THRESHOLD", map[string]any{
-		"score": score, "floor3_attempts": cFloor3, "floor4_attempts": cFloor4,
-	}), nil
+	if score > 1 {
+		return PassedWithMetrics(metrics), nil
+	}
+	return Flagged("SCORE_BELOW_THRESHOLD", metrics), nil
 }

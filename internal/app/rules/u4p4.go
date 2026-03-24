@@ -18,16 +18,9 @@ func NewU4P4Rule() *U4P4Rule {
 	)}
 }
 
-func (r *U4P4Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string) (Result, error) {
+func (r *U4P4Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string, ec EvalContext) (Result, error) {
 	helper := NewLogDataHelper(db, game)
-
-	window, err := helper.GetAttemptWindow(ctx, playerID, "questActiveEvent:36")
-	if err != nil {
-		return Result{}, err
-	}
-	if window == nil {
-		return Flagged("NO_TRIGGER", nil), nil
-	}
+	window := ec.Window
 
 	score := 0
 
@@ -80,8 +73,16 @@ func (r *U4P4Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playe
 		score += 1
 	}
 
-	if score > 2 {
-		return Passed(), nil
+	metrics := map[string]any{
+		"topRowAttempts":    cM1Top,
+		"bottomRowAttempts": cM1Bot,
+		"machine2Attempts":  cM2,
+		"successCount":      successCount,
+		"score":             score,
+		"mistakeCount":      negCount,
 	}
-	return Flagged("SCORE_BELOW_THRESHOLD", map[string]any{"score": score}), nil
+	if score > 2 {
+		return PassedWithMetrics(metrics), nil
+	}
+	return Flagged("SCORE_BELOW_THRESHOLD", metrics), nil
 }

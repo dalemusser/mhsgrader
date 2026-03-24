@@ -4,7 +4,9 @@ package rules
 
 import (
 	"context"
+	"time"
 
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -27,6 +29,11 @@ func Passed() Result {
 	return Result{Status: StatusPassed}
 }
 
+// PassedWithMetrics returns a passed result with metrics.
+func PassedWithMetrics(metrics map[string]any) Result {
+	return Result{Status: StatusPassed, Metrics: metrics}
+}
+
 // Flagged returns a flagged result with a reason.
 func Flagged(reasonCode string, metrics map[string]any) Result {
 	return Result{
@@ -34,6 +41,14 @@ func Flagged(reasonCode string, metrics map[string]any) Result {
 		ReasonCode: reasonCode,
 		Metrics:    metrics,
 	}
+}
+
+// EvalContext provides the evaluator-computed context for a rule evaluation.
+type EvalContext struct {
+	Window     *AttemptWindow       // (startEvent._id, endEvent._id] — nil if no start found
+	StartTime  *time.Time           // Start event serverTimestamp
+	EndTime    time.Time            // End event serverTimestamp
+	EndEventID primitive.ObjectID   // End event _id
 }
 
 // Rule defines the interface for a grading rule.
@@ -60,7 +75,7 @@ type Rule interface {
 
 	// Evaluate evaluates the rule for a specific player.
 	// Returns a Result indicating passed/flagged and any metrics.
-	Evaluate(ctx context.Context, db *mongo.Database, game, playerID string) (Result, error)
+	Evaluate(ctx context.Context, db *mongo.Database, game, playerID string, ec EvalContext) (Result, error)
 }
 
 // BaseRule provides common functionality for rules.

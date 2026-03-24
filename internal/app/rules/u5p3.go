@@ -17,16 +17,9 @@ func NewU5P3Rule() *U5P3Rule {
 	)}
 }
 
-func (r *U5P3Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string) (Result, error) {
+func (r *U5P3Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string, ec EvalContext) (Result, error) {
 	helper := NewLogDataHelper(db, game)
-
-	window, err := helper.GetAttemptWindow(ctx, playerID, "questFinishEvent:44")
-	if err != nil {
-		return Result{}, err
-	}
-	if window == nil {
-		return Flagged("NO_TRIGGER", nil), nil
-	}
+	window := ec.Window
 
 	negKeys := []string{
 		"DialogueNodeEvent:108:25", "DialogueNodeEvent:108:32", "DialogueNodeEvent:108:33",
@@ -48,7 +41,7 @@ func (r *U5P3Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playe
 	}
 
 	if count < 4 {
-		return Passed(), nil
+		return PassedWithMetrics(map[string]any{"mistakeCount": count}), nil
 	}
-	return Flagged("TOO_MANY_NEGATIVES", map[string]any{"negativeCount": count}), nil
+	return Flagged("TOO_MANY_NEGATIVES", map[string]any{"mistakeCount": count}), nil
 }

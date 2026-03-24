@@ -16,16 +16,9 @@ func NewU2P6Rule() *U2P6Rule {
 	)}
 }
 
-func (r *U2P6Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string) (Result, error) {
+func (r *U2P6Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string, ec EvalContext) (Result, error) {
 	helper := NewLogDataHelper(db, game)
-
-	window, err := helper.GetAttemptWindow(ctx, playerID, "DialogueNodeEvent:20:46")
-	if err != nil {
-		return Result{}, err
-	}
-	if window == nil {
-		return Flagged("NO_TRIGGER", nil), nil
-	}
+	window := ec.Window
 
 	passKey := "DialogueNodeEvent:20:43"
 	yellowNodes := []string{
@@ -38,13 +31,16 @@ func (r *U2P6Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playe
 		return Result{}, err
 	}
 
-	hasYellow, err := helper.HasAnyEventInWindow(ctx, playerID, yellowNodes, window)
+	yellowCount, err := helper.CountEventsInWindow(ctx, playerID, yellowNodes, window)
 	if err != nil {
 		return Result{}, err
 	}
 
-	if hasPass && !hasYellow {
-		return Passed(), nil
+	if hasPass && yellowCount == 0 {
+		return PassedWithMetrics(map[string]any{"mistakeCount": int64(0)}), nil
 	}
-	return Flagged("HIT_YELLOW_NODE", nil), nil
+	if !hasPass {
+		return Flagged("MISSING_SUCCESS_NODE", map[string]any{"mistakeCount": yellowCount}), nil
+	}
+	return Flagged("HIT_YELLOW_NODE", map[string]any{"mistakeCount": yellowCount}), nil
 }

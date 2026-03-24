@@ -118,6 +118,39 @@ func ensureLogdataIndexes(ctx context.Context, db *mongo.Database) error {
 			},
 			Options: options.Index().SetName("idx_logdata_grader_player_event_ts"),
 		},
+		// _id-windowed grading queries: player + eventKey with _id range
+		// Used by GetLatestByEventKeysBefore, ExistsByEventKeyInIDWindow,
+		// CountByEventKeyInIDWindow, CountByEventKeysInIDWindow, etc.
+		{
+			Keys: bson.D{
+				{Key: "game", Value: 1},
+				{Key: "playerId", Value: 1},
+				{Key: "eventKey", Value: 1},
+				{Key: "_id", Value: 1},
+			},
+			Options: options.Index().SetName("idx_logdata_grader_player_event_id"),
+		},
+		// _id-windowed player queries without eventKey filter
+		// Used by FindAllInIDWindow for active duration calculation
+		{
+			Keys: bson.D{
+				{Key: "game", Value: 1},
+				{Key: "playerId", Value: 1},
+				{Key: "_id", Value: 1},
+			},
+			Options: options.Index().SetName("idx_logdata_grader_player_id"),
+		},
+		// _id-windowed eventType queries for machine/box interaction grading
+		// Used by CountByEventTypeAndDataInIDWindow, FindLatestByEventTypeAndDataInIDWindow, etc.
+		{
+			Keys: bson.D{
+				{Key: "game", Value: 1},
+				{Key: "playerId", Value: 1},
+				{Key: "eventType", Value: 1},
+				{Key: "_id", Value: 1},
+			},
+			Options: options.Index().SetName("idx_logdata_grader_player_type_id"),
+		},
 	}
 
 	for _, idx := range indexes {

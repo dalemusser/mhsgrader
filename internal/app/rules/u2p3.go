@@ -13,21 +13,14 @@ type U2P3Rule struct{ BaseRule }
 
 func NewU2P3Rule() *U2P3Rule {
 	return &U2P3Rule{NewBaseRule(2, 3, "v2",
-		[]string{"DialogueNodeEvent:20:26"},
+		[]string{"DialogueNodeEvent:20:33"},
 		[]string{"DialogueNodeEvent:22:18"},
 	)}
 }
 
-func (r *U2P3Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string) (Result, error) {
+func (r *U2P3Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string, ec EvalContext) (Result, error) {
 	helper := NewLogDataHelper(db, game)
-
-	window, err := helper.GetWindowBetweenEvents(ctx, playerID, "DialogueNodeEvent:20:33", "DialogueNodeEvent:22:18")
-	if err != nil {
-		return Result{}, err
-	}
-	if window == nil {
-		return Flagged("NO_TRIGGER", nil), nil
-	}
+	window := ec.Window
 
 	targetKeys := []string{
 		"DialogueNodeEvent:18:225", "DialogueNodeEvent:28:185", "DialogueNodeEvent:59:185",
@@ -48,7 +41,7 @@ func (r *U2P3Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playe
 	}
 
 	if count <= 6 {
-		return Passed(), nil
+		return PassedWithMetrics(map[string]any{"mistakeCount": count}), nil
 	}
-	return Flagged("BAD_FEEDBACK", map[string]any{"triggering_number": count}), nil
+	return Flagged("BAD_FEEDBACK", map[string]any{"mistakeCount": count}), nil
 }

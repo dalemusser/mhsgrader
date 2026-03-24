@@ -16,6 +16,6 @@ func NewU1P1Rule() *U1P1Rule {
 	)}
 }
 
-func (r *U1P1Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string) (Result, error) {
-	return Passed(), nil
+func (r *U1P1Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string, ec EvalContext) (Result, error) {
+	return PassedWithMetrics(map[string]any{"mistakeCount": int64(0)}), nil
 }

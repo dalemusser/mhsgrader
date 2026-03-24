@@ -17,16 +17,9 @@ func NewU2P5Rule() *U2P5Rule {
 	)}
 }
 
-func (r *U2P5Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string) (Result, error) {
+func (r *U2P5Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string, ec EvalContext) (Result, error) {
 	helper := NewLogDataHelper(db, game)
-
-	window, err := helper.GetAttemptWindow(ctx, playerID, "DialogueNodeEvent:23:42")
-	if err != nil {
-		return Result{}, err
-	}
-	if window == nil {
-		return Flagged("NO_TRIGGER", nil), nil
-	}
+	window := ec.Window
 
 	posKeys := []string{
 		"DialogueNodeEvent:26:165", "DialogueNodeEvent:26:166", "DialogueNodeEvent:26:167",
@@ -63,10 +56,13 @@ func (r *U2P5Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playe
 
 	score := float64(posCount) - (float64(negCount) / 3.0)
 
-	if score >= 4.0 {
-		return Passed(), nil
+	metrics := map[string]any{
+		"posCount":     posCount,
+		"mistakeCount": negCount,
+		"score":        score,
 	}
-	return Flagged("TOO_MANY_NEGATIVES", map[string]any{
-		"score": score, "posCount": posCount, "negCount": negCount, "wrong_number": negCount,
-	}), nil
+	if score >= 4.0 {
+		return PassedWithMetrics(metrics), nil
+	}
+	return Flagged("TOO_MANY_NEGATIVES", metrics), nil
 }

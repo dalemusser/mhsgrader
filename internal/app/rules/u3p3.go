@@ -32,16 +32,9 @@ func u3p3BaseScore(count int64) int {
 	return 0
 }
 
-func (r *U3P3Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string) (Result, error) {
+func (r *U3P3Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string, ec EvalContext) (Result, error) {
 	helper := NewLogDataHelper(db, game)
-
-	window, err := helper.GetAttemptWindow(ctx, playerID, "questFinishEvent:18")
-	if err != nil {
-		return Result{}, err
-	}
-	if window == nil {
-		return Flagged("NO_TRIGGER", nil), nil
-	}
+	window := ec.Window
 
 	targetKeys := []string{
 		"DialogueNodeEvent:84:20", "DialogueNodeEvent:84:25",
@@ -64,13 +57,25 @@ func (r *U3P3Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playe
 		return Result{}, err
 	}
 
-	score := u3p3BaseScore(count)
+	baseScore := u3p3BaseScore(count)
+	totalScore := baseScore
 	if hasBonus {
-		score++
+		totalScore++
 	}
 
-	if score >= 3 {
-		return Passed(), nil
+	metrics := map[string]any{
+		"baseScore":       baseScore,
+		"usedBackingInfo": hasBonus,
+		"totalScore":      totalScore,
+		"mistakeCount":    count,
 	}
-	return Flagged("WRONG_ARG_SELECTED", map[string]any{"attempt_number": count}), nil
+	if totalScore >= 3 {
+		return PassedWithMetrics(metrics), nil
+	}
+
+	// Distinguish reason: if backing info wasn't checked, flag that specifically
+	if !hasBonus {
+		return Flagged("MISSING_SUCCESS_NODE", metrics), nil
+	}
+	return Flagged("WRONG_ARG_SELECTED", metrics), nil
 }
