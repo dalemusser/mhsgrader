@@ -127,3 +127,33 @@ dashboard; changes you request will be applied in a follow-up release.*
   U4P2 / U5P1, and the U2P3 / U2P6 salinity / both-options branches) — a
   deliberately imperfect playthrough that hits them would let us verify the
   grader end to end.
+
+## E. Findings from the rule-by-rule implementation (2026-09-20)
+
+- **U3P4 `SOLVED_WITH_ASSIST` vs colour.** The code's trigger is `assisted OR no gate`,
+  not a mirror of the colour rule. If DANI's assist node `78:23` could appear with two
+  or fewer colour keys, the cell would be green while the code says triggered. Per the
+  node map the assist is only offered after the 4th attempt, so we treat it as
+  unreachable; the grader evaluates reason codes only on yellow cells.
+- **Latest-start / latest-end scripts (U2P6, U3P4, U4P1, U4P4, U4P6, U5P1–U5P3).** The
+  scripts return "no window → yellow, no code" when a *later* start event follows the
+  latest end event (a student re-entering the activity after finishing). The grader
+  grades at the moment the end event arrives and keeps that grade; a re-entered start
+  shows on the dashboard as "started again" over the finished grade. Same result on
+  every fixture; different only in that replay situation.
+- **Not-reached points.** The colour scripts return "yellow" for a point the student
+  never reached (fixture 09-03-26-4, Unit 5 truncated), and the reason scripts return no
+  code for it. The grader records nothing for such a point and the dashboard shows it
+  as not started (white/pencil), which we believe is what teachers should see. The
+  Python colour manifest labels these "not-played artifacts"; consider giving them a
+  distinct expected value.
+- **Metric meanings that changed** (analytics tab, not the colour): U5P1 `mistakeCount`
+  now counts incorrect arrangements over the seven feedback nodes 100:33–100:39 (the
+  number the message quotes) rather than the three colour negatives; U4P4
+  `mistakeCount` is the wrong-depth count over 107:2/3/4/6; U4P1's puzzle duration is
+  absent (not 0) when it could not be measured; U4P6 stores `boxScore`,
+  `dialogueScore` and their maximum as `score`.
+- **Duplicate end events.** `questFinishEvent:45` (U5P4) logs twice back to back and
+  `questActiveEvent:36` (U4P4) re-fires on the scene change to Anderson Base, so those
+  points record two identical attempts per playthrough. Harmless, but if the game
+  team can de-duplicate those events the attempt counts become meaningful.
