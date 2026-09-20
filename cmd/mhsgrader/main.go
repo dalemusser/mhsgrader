@@ -22,6 +22,7 @@ import (
 func main() {
 	// Define reset flag (must be before LoadConfig which calls pflag.Parse())
 	pflag.Bool("reset", false, "Reset cursor and clear all grades, then exit")
+	pflag.Bool("once", false, "Grade everything pending (until the scan is caught up), then exit")
 
 	// Initialize logger
 	logger, err := logging.BuildLogger("info", "dev")
@@ -96,6 +97,15 @@ func main() {
 		logger.Info("received shutdown signal")
 		cancel()
 	}()
+
+	// --once: catch up and exit (used after a reset, and for scripted regrades)
+	if once, _ := pflag.CommandLine.GetBool("once"); once {
+		if err := engine.RunOnce(ctx); err != nil {
+			logger.Fatal("grading run failed", zap.Error(err))
+		}
+		logger.Info("grading caught up - exiting")
+		return
+	}
 
 	// Run the grading engine (blocks until context is cancelled)
 	if err := engine.Run(ctx); err != nil {

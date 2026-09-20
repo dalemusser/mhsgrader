@@ -3,7 +3,6 @@ package grader
 
 import (
 	"context"
-	"time"
 
 	"github.com/dalemusser/mhsgrader/internal/app/store/graderstate"
 	"github.com/dalemusser/mhsgrader/internal/app/store/logdata"
@@ -35,53 +34,33 @@ func NewScanner(logDB, gradesDB *mongo.Database, logger *zap.Logger, graderID, g
 	}
 }
 
-// TriggerEvent represents a log event that triggered a rule evaluation.
-type TriggerEvent struct {
-	ID              primitive.ObjectID
-	UserID        string
-	EventKey        string
-	ServerTimestamp time.Time
-}
+// TriggerEvent is a scanned log entry that starts, ends or unit-starts a
+// progress point.
+type TriggerEvent = logdata.LogEntry
 
-// Scan scans for new trigger events.
-// Returns the events found and the last seen ID.
-func (s *Scanner) Scan(ctx context.Context, triggerKeys []string) ([]TriggerEvent, primitive.ObjectID, error) {
-	// Get current state
+// Scan scans for new trigger events (by eventKey or by eventType + data
+// matcher) after the stored cursor. Returns the events found and the last
+// seen ID.
+func (s *Scanner) Scan(ctx context.Context, triggerKeys []string, matchers []logdata.Match) ([]TriggerEvent, primitive.ObjectID, error) {
 	state, err := s.stateStore.Get(ctx, s.graderID)
 	if err != nil {
 		return nil, primitive.NilObjectID, err
 	}
 
-	// Scan for new triggers
-	entries, err := s.logStore.ScanTriggers(ctx, s.game, triggerKeys, state.LastSeenID, s.batchSize)
+	entries, err := s.logStore.ScanTriggers(ctx, s.game, triggerKeys, matchers, state.LastSeenID, s.batchSize)
 	if err != nil {
 		return nil, primitive.NilObjectID, err
 	}
-
 	if len(entries) == 0 {
 		return nil, state.LastSeenID, nil
 	}
 
-	// Convert to trigger events
-	events := make([]TriggerEvent, len(entries))
-	for i, entry := range entries {
-		events[i] = TriggerEvent{
-			ID:              entry.ID,
-			UserID:        entry.UserID,
-			EventKey:        entry.EventKey,
-			ServerTimestamp: entry.ServerTimestamp,
-		}
-	}
-
-	// Return the last ID seen
 	lastID := entries[len(entries)-1].ID
-
 	s.logger.Debug("scanned for triggers",
-		zap.Int("found", len(events)),
+		zap.Int("found", len(entries)),
 		zap.String("lastSeenId", lastID.Hex()),
 	)
-
-	return events, lastID, nil
+	return entries, lastID, nil
 }
 
 // UpdateCursor updates the last seen ID in the state.

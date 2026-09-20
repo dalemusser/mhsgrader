@@ -140,6 +140,16 @@ func ensureLogdataIndexes(ctx context.Context, db *mongo.Database) error {
 			},
 			Options: options.Index().SetName("idx_logdata_grader_user_id"),
 		},
+		// Trigger scanning by eventType (anchors that carry no eventKey, e.g.
+		// the Unit 4 soil-key puzzle close): game + eventType + _id
+		{
+			Keys: bson.D{
+				{Key: "game", Value: 1},
+				{Key: "eventType", Value: 1},
+				{Key: "_id", Value: 1},
+			},
+			Options: options.Index().SetName("idx_logdata_grader_type_scan"),
+		},
 		// _id-windowed eventType queries for machine/box interaction grading
 		// Used by CountByEventTypeAndDataInIDWindow, FindLatestByEventTypeAndDataInIDWindow, etc.
 		{

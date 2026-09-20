@@ -41,6 +41,7 @@ func (e *Engine) Run(ctx context.Context) error {
 	triggerKeys := e.registry.AllTriggerKeys()
 	e.logger.Info("starting grading engine",
 		zap.Int("triggerKeys", len(triggerKeys)),
+		zap.Int("triggerMatchers", len(e.registry.AllTriggerMatchers())),
 		zap.Duration("scanInterval", e.scanInterval),
 	)
 
@@ -48,7 +49,7 @@ func (e *Engine) Run(ctx context.Context) error {
 	defer ticker.Stop()
 
 	// Run immediately on start
-	if err := e.tick(ctx, triggerKeys); err != nil {
+	if _, err := e.tick(ctx, triggerKeys); err != nil {
 		e.logger.Error("initial tick failed", zap.Error(err))
 	}
 
@@ -58,23 +59,41 @@ func (e *Engine) Run(ctx context.Context) error {
 			e.logger.Info("grading engine stopping")
 			return ctx.Err()
 		case <-ticker.C:
-			if err := e.tick(ctx, triggerKeys); err != nil {
+			if _, err := e.tick(ctx, triggerKeys); err != nil {
 				e.logger.Error("tick failed", zap.Error(err))
 			}
 		}
 	}
 }
 
-// tick performs one scan-evaluate cycle.
-func (e *Engine) tick(ctx context.Context, triggerKeys []string) error {
+// RunOnce processes scan batches back to back until the scanner finds no new
+// trigger events, then returns. Used by the replay tests and by `--once`
+// (grade everything that is pending and exit, e.g. right after a reset).
+func (e *Engine) RunOnce(ctx context.Context) error {
+	triggerKeys := e.registry.AllTriggerKeys()
+	for {
+		found, err := e.tick(ctx, triggerKeys)
+		if err != nil {
+			return err
+		}
+		if found == 0 {
+			return nil
+		}
+	}
+}
+
+// tick performs one scan-evaluate cycle. It returns the number of trigger
+// events the scan found (zero means the grader is caught up) and an error
+// when the scan failed or a batch stopped early at a failing event.
+func (e *Engine) tick(ctx context.Context, triggerKeys []string) (int, error) {
 	// Scan for new triggers
-	events, _, err := e.scanner.Scan(ctx, triggerKeys)
+	events, _, err := e.scanner.Scan(ctx, triggerKeys, e.registry.AllTriggerMatchers())
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	if len(events) == 0 {
-		return nil
+		return 0, nil
 	}
 
 	e.logger.Info("processing triggers",
@@ -84,6 +103,7 @@ func (e *Engine) tick(ctx context.Context, triggerKeys []string) error {
 	// Evaluate each trigger, stopping at first failure so the cursor
 	// doesn't advance past events that weren't successfully processed.
 	var lastSuccessID primitive.ObjectID
+	var batchErr error
 	anySuccess := false
 	for _, event := range events {
 		if err := e.evaluator.EvaluateAndStore(ctx, event); err != nil {
@@ -92,6 +112,7 @@ func (e *Engine) tick(ctx context.Context, triggerKeys []string) error {
 				zap.String("user_id", event.UserID),
 				zap.Error(err),
 			)
+			batchErr = err
 			break
 		}
 		lastSuccessID = event.ID
@@ -100,14 +121,14 @@ func (e *Engine) tick(ctx context.Context, triggerKeys []string) error {
 
 	if !anySuccess {
 		// First event failed — don't advance cursor at all
-		return nil
+		return len(events), batchErr
 	}
 
 	// Update cursor to the last successfully processed event
 	if err := e.scanner.UpdateCursor(ctx, lastSuccessID); err != nil {
 		e.logger.Error("failed to update cursor", zap.Error(err))
-		return err
+		return len(events), err
 	}
 
-	return nil
+	return len(events), batchErr
 }

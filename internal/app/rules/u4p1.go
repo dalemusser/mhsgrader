@@ -34,8 +34,8 @@ func (r *U4P1Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userI
 	}
 
 	// Check Soil Key Puzzle timing
-	startData := map[string]string{"Soil Key Puzzle Status": "Started"}
-	endData := map[string]string{"Soil Key Puzzle Status": "Finished"}
+	startData := map[string]any{"Soil Key Puzzle Status": "Started"}
+	endData := map[string]any{"Soil Key Puzzle Status": "Finished"}
 
 	startEvent, endEvent, err := helper.FindEventPairByEventTypeAndData(ctx, userID,
 		"Soil Key Puzzle", startData, endData, window)

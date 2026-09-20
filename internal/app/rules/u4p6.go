@@ -23,7 +23,7 @@ func (r *U4P6Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userI
 	window := ec.Window
 
 	// Expected soil types per box (zero-indexed boxId from game)
-	expected := map[string]string{
+	expected := map[string]any{
 		"0": "Gravel",
 		"1": "Sand",
 		"2": "Clay",
@@ -33,7 +33,7 @@ func (r *U4P6Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userI
 	boxDetails := make(map[string]any)
 	for boxID, correctSoil := range expected {
 		entry, err := helper.FindLatestByEventTypeAndData(ctx, userID, "TerasGardenBox",
-			map[string]string{"actionType": "cameraPlaced", "boxId": boxID}, window)
+			map[string]any{"actionType": "cameraPlaced", "boxId": boxID}, window)
 		if err != nil {
 			return Result{}, err
 		}

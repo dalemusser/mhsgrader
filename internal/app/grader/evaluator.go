@@ -2,6 +2,7 @@
 package grader
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"time"
@@ -41,7 +42,7 @@ func NewEvaluator(logDB, gradesDB *mongo.Database, registry *rules.Registry, log
 // EvaluateAndStore processes a scanned event: handles unit starts, point starts (active), and end triggers (evaluate).
 // Processes all rules for the event (so one failing rule doesn't block others),
 // but returns an error if any rule failed so the cursor won't advance past this event.
-// On retry, already-stored grades are safely overwritten (UpsertGrade is idempotent).
+// On retry, already-stored grades are safely overwritten (the grade store is idempotent per attempt).
 func (e *Evaluator) EvaluateAndStore(ctx context.Context, event TriggerEvent) error {
 	var firstErr error
 
@@ -62,9 +63,8 @@ func (e *Evaluator) EvaluateAndStore(ctx context.Context, event TriggerEvent) er
 		}
 	}
 
-	// Handle start triggers — set "active" status
-	startRules := e.registry.GetStartRulesForKey(event.EventKey)
-	for _, rule := range startRules {
+	// Handle start anchors — set "active" status
+	for _, rule := range e.registry.GetStartRulesForEvent(&event) {
 		startTime := event.ServerTimestamp
 		if err := e.gradeStore.AppendActiveIfNeeded(ctx, e.game, event.UserID, rule.PointID(), rule.ID(), &startTime); err != nil {
 			e.logger.Error("failed to set active status",
@@ -83,39 +83,24 @@ func (e *Evaluator) EvaluateAndStore(ctx context.Context, event TriggerEvent) er
 	}
 
 	// Handle end triggers — evaluate rules and store passed/flagged
-	endRules := e.registry.GetEndRulesForKey(event.EventKey)
-	for _, rule := range endRules {
-		// Build EvalContext: find start event and construct window
-		ec := rules.EvalContext{
-			EndTime:    event.ServerTimestamp,
-			EndEventID: event.ID,
+	for _, rule := range e.registry.GetEndRulesForEvent(&event) {
+		ec, startEntry, skip, err := e.buildContext(ctx, rule, event)
+		if err != nil {
+			e.logger.Error("failed to build the graded window",
+				zap.String("rule", rule.ID()),
+				zap.String("user_id", event.UserID),
+				zap.Error(err),
+			)
+			firstErr = errors.Join(firstErr, err)
+			continue
 		}
-
-		startKeys := rule.StartKeys()
-		var startEntry *logdata.LogEntry
-		if len(startKeys) > 0 {
-			var err error
-			startEntry, err = e.logStore.GetLatestByEventKeysBefore(ctx, e.game, event.UserID, startKeys, event.ID)
-			if err != nil {
-				e.logger.Warn("failed to look up start event for EvalContext",
-					zap.String("rule", rule.ID()),
-					zap.String("user_id", event.UserID),
-					zap.Error(err),
-				)
-			}
-		}
-
-		if startEntry != nil {
-			ec.StartTime = &startEntry.ServerTimestamp
-			ec.Window = &rules.AttemptWindow{
-				StartID: startEntry.ID,
-				EndID:   event.ID,
-			}
-		} else {
-			ec.Window = &rules.AttemptWindow{
-				StartID: rules.ZeroID(),
-				EndID:   event.ID,
-			}
+		if skip {
+			e.logger.Debug("trigger re-fired with no new start; ignored",
+				zap.String("rule", rule.ID()),
+				zap.String("user_id", event.UserID),
+				zap.String("eventId", event.ID.Hex()),
+			)
+			continue
 		}
 
 		result, err := rule.Evaluate(ctx, e.logDB, e.game, event.UserID, ec)
@@ -129,17 +114,26 @@ func (e *Evaluator) EvaluateAndStore(ctx context.Context, event TriggerEvent) er
 			continue
 		}
 
+		metrics := result.Metrics
+		if ec.WindowNote != "" {
+			if metrics == nil {
+				metrics = map[string]any{}
+			}
+			metrics["window"] = ec.WindowNote
+		}
+
 		endTime := event.ServerTimestamp
 		grade := progressgrades.Grade{
 			Status:     result.Status,
 			RuleID:     rule.ID(),
 			ReasonCode: result.ReasonCode,
-			Metrics:    result.Metrics,
+			Reasons:    toStoredReasons(result.Reasons),
+			Metrics:    metrics,
 			StartTime:  ec.StartTime,
 			EndTime:    &endTime,
 		}
 
-		// Calculate durations reusing the start entry from EvalContext
+		// Durations are measured from the start anchor (not the graded window)
 		grade.DurationSecs = e.calcDurationFromStart(startEntry, event)
 		grade.ActiveDurationSecs = e.calcActiveDurationFromStart(ctx, startEntry, event, rule)
 
@@ -162,6 +156,53 @@ func (e *Evaluator) EvaluateAndStore(ctx context.Context, event TriggerEvent) er
 	}
 
 	return firstErr
+}
+
+// buildContext resolves the start anchor and the graded window for a trigger
+// according to the rule's WindowSpec. skip is true when the trigger is a
+// re-fire that must not produce a new attempt.
+func (e *Evaluator) buildContext(ctx context.Context, rule rules.Rule, event TriggerEvent) (ec rules.EvalContext, startEntry *logdata.LogEntry, skip bool, err error) {
+	ec = rules.EvalContext{EndTime: event.ServerTimestamp, EndEventID: event.ID}
+
+	hasStartAnchors := len(rule.StartKeys())+len(rule.StartMatchers()) > 0
+	if hasStartAnchors {
+		startEntry, err = e.logStore.LatestBefore(ctx, e.game, event.UserID, rule.StartKeys(), rule.StartMatchers(), event.ID)
+		if err != nil {
+			return ec, nil, false, err
+		}
+	}
+	if startEntry != nil {
+		ec.StartTime = &startEntry.ServerTimestamp
+		ec.StartEventID = startEntry.ID
+	}
+
+	w := &rules.AttemptWindow{StartID: rules.ZeroID(), EndID: event.ID}
+	spec := rule.Window()
+	switch spec.Kind {
+	case rules.WindowPrevTrigger:
+		prev, perr := e.logStore.LatestBefore(ctx, e.game, event.UserID, rule.TriggerKeys(), rule.TriggerMatchers(), event.ID)
+		if perr != nil {
+			return ec, startEntry, false, perr
+		}
+		if prev != nil {
+			if hasStartAnchors && (startEntry == nil || bytes.Compare(startEntry.ID[:], prev.ID[:]) <= 0) {
+				return ec, startEntry, true, nil
+			}
+			w.StartID = prev.ID
+		}
+	default: // WindowStartBeforeEnd
+		if startEntry != nil {
+			w.StartID = startEntry.ID
+			if spec.TimestampFence && startEntry.HasTimestamp() && event.HasTimestamp() {
+				ts, te := startEntry.Timestamp, event.Timestamp
+				w.TSStart, w.TSEnd = &ts, &te
+			}
+		} else if hasStartAnchors {
+			ec.WindowNote = "no start event found; graded from the beginning of the log"
+		}
+	}
+	ec.Window = w
+	return ec, startEntry, false, nil
 }
 
 // calcDurationFromStart computes wall-clock duration using a pre-fetched start entry.
@@ -211,4 +252,16 @@ func (e *Evaluator) calcActiveDurationFromStart(ctx context.Context, startEntry 
 	}
 
 	return &activeSecs
+}
+
+// toStoredReasons converts rule reasons to their stored form.
+func toStoredReasons(rs []rules.Reason) []progressgrades.Reason {
+	if len(rs) == 0 {
+		return nil
+	}
+	out := make([]progressgrades.Reason, len(rs))
+	for i, r := range rs {
+		out[i] = progressgrades.Reason{Code: r.Code, Variables: r.Variables}
+	}
+	return out
 }

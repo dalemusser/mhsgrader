@@ -3,6 +3,8 @@ package bootstrap
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/dalemusser/waffle/config"
@@ -39,15 +41,15 @@ func LoadConfig(logger *zap.Logger) (*config.CoreConfig, AppConfig, error) {
 
 	appCfg := AppConfig{
 		MongoURI:         appValues.String("mongo_uri"),
-		MongoMaxPoolSize: uint64(appValues.Int("mongo_max_pool_size")),
-		MongoMinPoolSize: uint64(appValues.Int("mongo_min_pool_size")),
+		MongoMaxPoolSize: uint64(intValue(appValues, "mongo_max_pool_size", 100)),
+		MongoMinPoolSize: uint64(intValue(appValues, "mongo_min_pool_size", 10)),
 
 		LogDatabase:    appValues.String("log_database"),
 		GradesDatabase: appValues.String("grades_database"),
 
 		Game:               appValues.String("game"),
 		ScanInterval:       appValues.Duration("scan_interval", 5*time.Second),
-		BatchSize:          appValues.Int("batch_size"),
+		BatchSize:          intValue(appValues, "batch_size", 500),
 		ActiveGapThreshold: appValues.Duration("active_gap_threshold", 2*time.Minute),
 	}
 
@@ -78,4 +80,19 @@ func ValidateConfig(coreCfg *config.CoreConfig, appCfg AppConfig, logger *zap.Lo
 	}
 
 	return nil
+}
+
+// intValue reads an integer setting. Values that arrive through the
+// environment are strings, which the typed accessor reads as 0; parse those
+// explicitly and fall back to the default when the setting is absent.
+func intValue(v config.AppConfigValues, key string, def int) int {
+	if n := v.Int(key); n > 0 {
+		return n
+	}
+	if s := strings.TrimSpace(v.String(key)); s != "" {
+		if n, err := strconv.Atoi(s); err == nil {
+			return n
+		}
+	}
+	return def
 }

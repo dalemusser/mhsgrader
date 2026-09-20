@@ -25,12 +25,12 @@ func (r *U5P2Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userI
 
 	// Count WaterChamberEvent for floor 3 (Condenser or Evaporator)
 	cFloor3Cond, err := helper.CountByEventTypeAndData(ctx, userID, "WaterChamberEvent",
-		map[string]string{"floor": "3", "machineType": "Condenser"}, window)
+		map[string]any{"floor": "3", "machineType": "Condenser"}, window)
 	if err != nil {
 		return Result{}, err
 	}
 	cFloor3Evap, err := helper.CountByEventTypeAndData(ctx, userID, "WaterChamberEvent",
-		map[string]string{"floor": "3", "machineType": "Evaporator"}, window)
+		map[string]any{"floor": "3", "machineType": "Evaporator"}, window)
 	if err != nil {
 		return Result{}, err
 	}
@@ -38,12 +38,12 @@ func (r *U5P2Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userI
 
 	// Count WaterChamberEvent for floor 4 (Condenser or Evaporator)
 	cFloor4Cond, err := helper.CountByEventTypeAndData(ctx, userID, "WaterChamberEvent",
-		map[string]string{"floor": "4", "machineType": "Condenser"}, window)
+		map[string]any{"floor": "4", "machineType": "Condenser"}, window)
 	if err != nil {
 		return Result{}, err
 	}
 	cFloor4Evap, err := helper.CountByEventTypeAndData(ctx, userID, "WaterChamberEvent",
-		map[string]string{"floor": "4", "machineType": "Evaporator"}, window)
+		map[string]any{"floor": "4", "machineType": "Evaporator"}, window)
 	if err != nil {
 		return Result{}, err
 	}

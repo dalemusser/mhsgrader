@@ -26,14 +26,14 @@ func (r *U4P4Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userI
 
 	// Machine 1, floor 5, TopRow
 	cM1Top, err := helper.CountByEventTypeAndData(ctx, userID, "soilMachine",
-		map[string]string{"floor": "5", "machine": "1", "row": "TopRow"}, window)
+		map[string]any{"floor": "5", "machine": "1", "row": "TopRow"}, window)
 	if err != nil {
 		return Result{}, err
 	}
 
 	// Machine 1, floor 5, BottomRow
 	cM1Bot, err := helper.CountByEventTypeAndData(ctx, userID, "soilMachine",
-		map[string]string{"floor": "5", "machine": "1", "row": "BottomRow"}, window)
+		map[string]any{"floor": "5", "machine": "1", "row": "BottomRow"}, window)
 	if err != nil {
 		return Result{}, err
 	}
@@ -44,7 +44,7 @@ func (r *U4P4Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userI
 
 	// Machine 2, floor 5
 	cM2, err := helper.CountByEventTypeAndData(ctx, userID, "soilMachine",
-		map[string]string{"floor": "5", "machine": "2"}, window)
+		map[string]any{"floor": "5", "machine": "2"}, window)
 	if err != nil {
 		return Result{}, err
 	}

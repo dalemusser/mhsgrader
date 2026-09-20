@@ -14,9 +14,9 @@ import (
 
 // State represents the grader's processing state.
 type State struct {
-	ID         string             `bson:"_id"`              // e.g., "mhs-grader"
-	LastSeenID primitive.ObjectID `bson:"lastSeenId"`       // Last processed log _id
-	UpdatedAt  time.Time          `bson:"updatedAt"`        // When state was last updated
+	ID         string             `bson:"_id"`        // e.g., "mhs-grader"
+	LastSeenID primitive.ObjectID `bson:"lastSeenId"` // Last processed log _id
+	UpdatedAt  time.Time          `bson:"updatedAt"`  // When state was last updated
 }
 
 // Store handles grader state persistence.

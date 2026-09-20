@@ -3,6 +3,8 @@ package rules
 
 import (
 	"sync"
+
+	"github.com/dalemusser/mhsgrader/internal/app/store/logdata"
 )
 
 // UnitStartEvent maps a unit to its start event key.
@@ -11,15 +13,24 @@ type UnitStartEvent struct {
 	EventKey string // e.g., "questActiveEvent:28"
 }
 
-// Registry maps eventKeys to rules and tracks unit start events.
+type matcherRule struct {
+	match EventMatch
+	rule  Rule
+}
+
+// Registry maps eventKeys (and eventType + data matchers) to rules and
+// tracks unit start events.
 type Registry struct {
 	mu            sync.RWMutex
 	startByKey    map[string][]Rule // start eventKey -> rules (sets "active")
 	endByKey      map[string][]Rule // end/trigger eventKey -> rules (evaluates)
+	startMatchers []matcherRule     // start anchors that are not eventKeys
+	endMatchers   []matcherRule     // end triggers that are not eventKeys
 	allRules      []Rule
-	allKeys       []string           // all keys (start + end) for scanning
-	unitStarts    []UnitStartEvent   // unit-level start events
-	unitStartKeys map[string]string  // eventKey -> unitID
+	allKeys       []string          // all keys (start + end + unit) for scanning
+	allMatchers   []EventMatch      // all non-key anchors for scanning (deduplicated)
+	unitStarts    []UnitStartEvent  // unit-level start events
+	unitStartKeys map[string]string // eventKey -> unitID
 }
 
 // NewRegistry creates a new rule registry.
@@ -27,9 +38,6 @@ func NewRegistry() *Registry {
 	return &Registry{
 		startByKey:    make(map[string][]Rule),
 		endByKey:      make(map[string][]Rule),
-		allRules:      make([]Rule, 0),
-		allKeys:       make([]string, 0),
-		unitStarts:    make([]UnitStartEvent, 0),
 		unitStartKeys: make(map[string]string),
 	}
 }
@@ -45,10 +53,17 @@ func (r *Registry) Register(rule Rule) {
 		r.startByKey[key] = append(r.startByKey[key], rule)
 		r.allKeys = appendUnique(r.allKeys, key)
 	}
-
 	for _, key := range rule.TriggerKeys() {
 		r.endByKey[key] = append(r.endByKey[key], rule)
 		r.allKeys = appendUnique(r.allKeys, key)
+	}
+	for _, m := range rule.StartMatchers() {
+		r.startMatchers = append(r.startMatchers, matcherRule{m, rule})
+		r.allMatchers = appendUniqueMatch(r.allMatchers, m)
+	}
+	for _, m := range rule.TriggerMatchers() {
+		r.endMatchers = append(r.endMatchers, matcherRule{m, rule})
+		r.allMatchers = appendUniqueMatch(r.allMatchers, m)
 	}
 }
 
@@ -76,6 +91,34 @@ func (r *Registry) GetEndRulesForKey(eventKey string) []Rule {
 	return r.endByKey[eventKey]
 }
 
+// GetStartRulesForEvent returns the rules whose start key or start matcher
+// the scanned entry satisfies.
+func (r *Registry) GetStartRulesForEvent(e *logdata.LogEntry) []Rule {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := append([]Rule(nil), r.startByKey[e.EventKey]...)
+	for _, mr := range r.startMatchers {
+		if mr.match.Matches(e) {
+			out = append(out, mr.rule)
+		}
+	}
+	return out
+}
+
+// GetEndRulesForEvent returns the rules whose trigger key or trigger matcher
+// the scanned entry satisfies.
+func (r *Registry) GetEndRulesForEvent(e *logdata.LogEntry) []Rule {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := append([]Rule(nil), r.endByKey[e.EventKey]...)
+	for _, mr := range r.endMatchers {
+		if mr.match.Matches(e) {
+			out = append(out, mr.rule)
+		}
+	}
+	return out
+}
+
 // GetUnitForStartKey returns the unit ID if this event key is a unit start event.
 // Returns empty string if not a unit start key.
 func (r *Registry) GetUnitForStartKey(eventKey string) string {
@@ -88,10 +131,18 @@ func (r *Registry) GetUnitForStartKey(eventKey string) string {
 func (r *Registry) AllTriggerKeys() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-
 	keys := make([]string, len(r.allKeys))
 	copy(keys, r.allKeys)
 	return keys
+}
+
+// AllTriggerMatchers returns the non-key anchors the scanner should watch.
+func (r *Registry) AllTriggerMatchers() []EventMatch {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	ms := make([]EventMatch, len(r.allMatchers))
+	copy(ms, r.allMatchers)
+	return ms
 }
 
 // AllRules returns all registered rules.
@@ -158,4 +209,13 @@ func appendUnique(slice []string, item string) []string {
 		}
 	}
 	return append(slice, item)
+}
+
+func appendUniqueMatch(slice []EventMatch, m EventMatch) []EventMatch {
+	for _, s := range slice {
+		if s.String() == m.String() {
+			return slice
+		}
+	}
+	return append(slice, m)
 }

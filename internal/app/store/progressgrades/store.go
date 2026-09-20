@@ -11,14 +11,23 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+// Reason is one triggered reason code together with the variables its
+// instructor-message template interpolates. Variable names are the
+// specification's placeholders verbatim (e.g. "attempt_number").
+type Reason struct {
+	Code      string         `bson:"code"`
+	Variables map[string]any `bson:"variables,omitempty"`
+}
+
 // Grade represents a single progress point grade.
 type Grade struct {
 	Attempt            int            `bson:"attempt"`                      // 1-based attempt number
 	Status             string         `bson:"status"`                       // "active", "passed", or "flagged"
 	ComputedAt         time.Time      `bson:"computedAt"`                   // When grade was computed
-	RuleID             string         `bson:"ruleId"`                       // e.g., "u1p1_v2"
-	ReasonCode         string         `bson:"reasonCode,omitempty"`         // e.g., "TOO_MANY_TARGETS"
-	Metrics            map[string]any `bson:"metrics,omitempty"`            // e.g., {countTargets: 9, threshold: 6}
+	RuleID             string         `bson:"ruleId"`                       // e.g., "u1p1_v3"
+	ReasonCode         string         `bson:"reasonCode,omitempty"`         // First triggered code (kept for readers that predate Reasons)
+	Reasons            []Reason       `bson:"reasons,omitempty"`            // Every triggered reason code with its message variables
+	Metrics            map[string]any `bson:"metrics,omitempty"`            // Raw counts/scores behind the grade (analytics)
 	StartTime          *time.Time     `bson:"startTime,omitempty"`          // Activity start
 	EndTime            *time.Time     `bson:"endTime,omitempty"`            // Activity end
 	DurationSecs       *float64       `bson:"durationSecs,omitempty"`       // Wall-clock time to complete (seconds)
@@ -28,7 +37,7 @@ type Grade struct {
 // UserGrades represents all grades for a single user.
 type UserGrades struct {
 	Game        string             `bson:"game"`                  // Game identifier
-	UserID    string             `bson:"user_id"`              // User identifier
+	UserID      string             `bson:"user_id"`               // User identifier
 	Grades      map[string][]Grade `bson:"grades"`                // Map of point ID to array of attempt grades
 	CurrentUnit string             `bson:"currentUnit,omitempty"` // Unit the student is currently in
 	LastUpdated time.Time          `bson:"lastUpdated"`           // When document was last modified
@@ -80,7 +89,7 @@ func (s *Store) AppendGrade(ctx context.Context, game, userID, pointID string, g
 				update := bson.M{
 					"$set": bson.M{
 						"grades." + pointID + "." + itoa(idx): grade,
-						"lastUpdated": now,
+						"lastUpdated":                         now,
 					},
 				}
 				_, err := s.coll.UpdateOne(ctx, filter, update)
@@ -105,7 +114,7 @@ func (s *Store) AppendGrade(ctx context.Context, game, userID, pointID string, g
 	grade.Attempt = 1
 	doc := UserGrades{
 		Game:        game,
-		UserID:    userID,
+		UserID:      userID,
 		Grades:      map[string][]Grade{pointID: {grade}},
 		LastUpdated: now,
 	}
@@ -160,7 +169,7 @@ func (s *Store) AppendActiveIfNeeded(ctx context.Context, game, userID, pointID,
 	grade.Attempt = 1
 	doc := UserGrades{
 		Game:        game,
-		UserID:    userID,
+		UserID:      userID,
 		Grades:      map[string][]Grade{pointID: {grade}},
 		LastUpdated: now,
 	}
@@ -179,7 +188,7 @@ func (s *Store) SetCurrentUnit(ctx context.Context, game, userID, unitID string)
 			"lastUpdated": now,
 		},
 		"$setOnInsert": bson.M{
-			"game":     game,
+			"game":    game,
 			"user_id": userID,
 		},
 	}
