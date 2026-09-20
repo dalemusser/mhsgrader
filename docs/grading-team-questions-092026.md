@@ -157,3 +157,16 @@ dashboard; changes you request will be applied in a follow-up release.*
   `questActiveEvent:36` (U4P4) re-fires on the scene change to Anderson Base, so those
   points record two identical attempts per playthrough. Harmless, but if the game
   team can de-duplicate those events the attempt counts become meaningful.
+- **U2P3 colour window vs reason window.** The colour script fences by client
+  `timestamp` and `_id` and goes yellow when either anchor lacks a timestamp; the
+  reason script uses `_id` only. Implemented both as written (the pop-up's
+  `triggering_number` is the unfenced count). They agree unless events were uploaded
+  out of order.
+- **U2P2 / U2P3 runs whose anchors carry no client timestamp** are yellow with no code
+  under the scripts (implemented literally). Confirm that is intended rather than
+  falling back to the `_id` window.
+- **U2P1 assisted path also fires the success node.** In fixture 09-03-26-4 both
+  `68:29` (solved on own) and the forced assist `68:28` fire in one window; the scripts
+  (and the grader) let the assist win. The game team should confirm whether `68:29`
+  is meant to fire on the assisted path.
+

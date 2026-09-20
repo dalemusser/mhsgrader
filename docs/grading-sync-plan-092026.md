@@ -7,11 +7,16 @@ transcriptions against `internal/app/rules/*.go`.*
 
 ## 0. Status / how to resume
 
-- **2026-09-20:** survey and plan written; nothing implemented yet. Awaiting Dale's
-  answers to §7 before Phase A starts. Baseline numbers in §1 were measured with the
-  unchanged binary on the local MongoDB (scratch DBs `mhsg_fixture_log*` /
-  `mhsg_fixture_grades*`, safe to drop).
-- Next action: A1 (fixture replay harness), then A2, then rules unit by unit (§6).
+- **2026-09-20 (evening):** Phase A done — engine (per-rule windows, event matchers,
+  reasons with variables, replay harness, `--once`), all 26 rules rewritten to the
+  spec (v3), replay harness at **26/26 colours and 26/26 reason codes + variables on
+  all five fixtures**; catalog extractor (`cmd/mhsreasoncodes`) and dashboard rendering
+  (Phase B1–B3) committed in stratahub. Dale's answers to §7: windows per script (Q1),
+  wipe + regrade approved (Q2), scripts as validated (Q3), U3P2 start decided by us
+  (Q4, `questActiveEvent:17`), AI pop-up later (Q5), EA scores out (Q6), doc
+  inconsistencies listed for the grading team (Q7) → `docs/grading-team-questions-092026.md`.
+- Next: production deploy + regrade (A6), stratahub deploy, spot-check the dashboard;
+  later: per-point AI pop-up (B4), teacher-guide note (B5), EA scores.
 
 ## 1. Where things stand
 
