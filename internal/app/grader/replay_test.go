@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/dalemusser/mhsgrader/internal/app/fixtures"
+	"github.com/dalemusser/mhsgrader/internal/app/reasoncodes"
 	"github.com/dalemusser/mhsgrader/internal/app/store/progressgrades"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -58,6 +59,10 @@ func TestFixtureReplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	catalog, err := reasoncodes.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	ids := colors.FixtureIDs()
 	if sel := os.Getenv("MHSGRADER_TEST_FIXTURES"); sel != "" {
@@ -72,7 +77,7 @@ func TestFixtureReplay(t *testing.T) {
 			t.Fatalf("unknown fixture %q", id)
 		}
 		t.Run(id, func(t *testing.T) {
-			replayFixture(ctx, t, client, dir, id, cf, codes.Fixtures[id], units)
+			replayFixture(ctx, t, client, dir, id, cf, codes.Fixtures[id], catalog, units)
 		})
 	}
 }
@@ -91,7 +96,7 @@ func unitFilter() map[int]bool {
 	return m
 }
 
-func replayFixture(ctx context.Context, t *testing.T, client *mongo.Client, dir, id string, cf fixtures.ColorFixture, codeFx fixtures.CodeFixture, units map[int]bool) {
+func replayFixture(ctx context.Context, t *testing.T, client *mongo.Client, dir, id string, cf fixtures.ColorFixture, codeFx fixtures.CodeFixture, catalog *reasoncodes.Catalog, units map[int]bool) {
 	base := fmt.Sprintf("mhsgtest_%s_%d", strings.NewReplacer("-", "_", ".", "_").Replace(id), os.Getpid())
 	logDB := client.Database(base + "_log")
 	gradesDB := client.Database(base + "_grades")
@@ -199,6 +204,30 @@ func replayFixture(ctx context.Context, t *testing.T, client *mongo.Client, dir,
 			} else {
 				codeMark = "MISMATCH"
 				t.Errorf("%s: %s", pid, strings.Join(problems, "; "))
+			}
+		}
+
+		// Every stored reason must be a code the spec defines for this point,
+		// and must carry every {placeholder} its instructor message uses.
+		if latest != nil {
+			spec := catalog.Points[pid]
+			for _, r := range latest.Reasons {
+				var tmpl string
+				known := false
+				for _, c := range spec.Codes {
+					if c.Code == r.Code {
+						known, tmpl = true, c.Message
+					}
+				}
+				if !known {
+					t.Errorf("%s: reason code %s is not defined in the spec for this point", pid, r.Code)
+					continue
+				}
+				for _, ph := range reasoncodes.Placeholders(tmpl) {
+					if _, ok := r.Variables[ph]; !ok {
+						t.Errorf("%s: %s message needs {%s} but the rule did not return it", pid, r.Code, ph)
+					}
+				}
 			}
 		}
 
