@@ -2,17 +2,27 @@ package rules
 
 import (
 	"context"
+	"strings"
 
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-// U4P6Rule — Desert Delicacies: Latest TerasGardenBox placement scoring.
-// Score +1 per box with correct soil type. Green if >= 2.
-// Box 0 = Gravel, Box 1 = Sand, Box 2 = Clay.
+// U4P6Rule — Desert Delicacies: the soil chosen for each garden box.
+//
+// Spec: mhsgrading/grading-logic/mhs-unit4-point6-grading.md (2026-09).
+// Window: latest questActiveEvent:41 before the trigger (exclusive) →
+// questFinishEvent:56 (inclusive).
+// Box score: +1 per box whose latest cameraPlaced soil is right (box "0"
+// Gravel, "1" Sand, "2" Clay). Dialogue fallback (box ids have shifted
+// between builds): count of correct-soil feedback 92:61 after the latest
+// review start 92:33 in the window (whole window when none), capped at 3.
+// Final = max(box score, dialogue score); green iff final >= 2.
+// Reason WRONG_SOIL_SELECTED: wrong_box_number, wrong_box_summary (built
+// from the box check).
 type U4P6Rule struct{ BaseRule }
 
 func NewU4P6Rule() *U4P6Rule {
-	return &U4P6Rule{NewBaseRule(4, 6, "v2",
+	return &U4P6Rule{NewBaseRule(4, 6, "v3",
 		[]string{"questActiveEvent:41"},
 		[]string{"questFinishEvent:56"},
 	)}
@@ -20,48 +30,76 @@ func NewU4P6Rule() *U4P6Rule {
 
 func (r *U4P6Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userID string, ec EvalContext) (Result, error) {
 	helper := NewLogDataHelper(db, game)
-	window := ec.Window
+	w := ec.Window
 
-	// Expected soil types per box (zero-indexed boxId from game)
-	expected := map[string]any{
-		"0": "Gravel",
-		"1": "Sand",
-		"2": "Clay",
+	const (
+		reviewStartKey     = "DialogueNodeEvent:92:33" // Dani starts reviewing the boxes
+		correctFeedbackKey = "DialogueNodeEvent:92:61" // correct-soil feedback, once per box
+	)
+
+	// Expected soil per box (zero-indexed boxId from the game), in box order.
+	boxes := []struct{ id, expected, label string }{
+		{"0", "Gravel", "the first box"},
+		{"1", "Sand", "the second box"},
+		{"2", "Clay", "the third box"},
 	}
 
-	score := 0
-	boxDetails := make(map[string]any)
-	for boxID, correctSoil := range expected {
+	metrics := map[string]any{}
+	boxScore := int64(0)
+	var wrongParts []string
+	for _, b := range boxes {
 		entry, err := helper.FindLatestByEventTypeAndData(ctx, userID, "TerasGardenBox",
-			map[string]any{"actionType": "cameraPlaced", "boxId": boxID}, window)
+			map[string]any{"actionType": "cameraPlaced", "boxId": b.id}, w)
 		if err != nil {
 			return Result{}, err
 		}
-		var placed string
-		var correct bool
+		actual := ""
 		if entry != nil {
-			if soilType, ok := entry.Data["soilType"].(string); ok {
-				placed = soilType
-				correct = soilType == correctSoil
-				if correct {
-					score++
-				}
-			}
+			actual, _ = entry.Data["soilType"].(string)
 		}
-		boxDetails["box"+boxID+"SoilType"] = placed
-		boxDetails["box"+boxID+"Correct"] = correct
+		correct := actual == b.expected
+		switch {
+		case correct:
+			boxScore++
+		case actual != "":
+			wrongParts = append(wrongParts, b.label+" (chose "+actual+", needs "+b.expected+")")
+		default:
+			wrongParts = append(wrongParts, b.label+" (no camera placement recorded, needs "+b.expected+")")
+		}
+		metrics["box"+b.id+"SoilType"] = actual
+		metrics["box"+b.id+"Correct"] = correct
 	}
 
-	mistakeCount := int64(3 - score)
-	metrics := map[string]any{
-		"score":        score,
-		"mistakeCount": mistakeCount,
+	// Dialogue-feedback fallback: 92:61 in the latest review round.
+	latestReview, err := helper.LatestEventInWindow(ctx, userID, []string{reviewStartKey}, w)
+	if err != nil {
+		return Result{}, err
 	}
-	for k, v := range boxDetails {
-		metrics[k] = v
+	feedbackWindow := w
+	if latestReview != nil {
+		feedbackWindow = w.Sub(latestReview.ID, w.EndID)
 	}
-	if score >= 2 {
+	feedbackCount, err := helper.CountEventInIDWindow(ctx, userID, correctFeedbackKey, feedbackWindow)
+	if err != nil {
+		return Result{}, err
+	}
+	dialogueScore := min(feedbackCount, 3)
+
+	finalScore := max(boxScore, dialogueScore)
+	wrongBoxes := int64(len(wrongParts))
+
+	metrics["boxScore"] = boxScore
+	metrics["dialogueScore"] = dialogueScore
+	metrics["score"] = finalScore
+	metrics["mistakeCount"] = wrongBoxes
+	if finalScore >= 2 {
 		return PassedWithMetrics(metrics), nil
 	}
-	return Flagged("SCORE_BELOW_THRESHOLD", metrics), nil
+	return FlaggedWith(metrics, Reason{
+		Code: "WRONG_SOIL_SELECTED",
+		Variables: map[string]any{
+			"wrong_box_number":  wrongBoxes,
+			"wrong_box_summary": strings.Join(wrongParts, " and "),
+		},
+	}), nil
 }
