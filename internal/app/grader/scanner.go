@@ -38,7 +38,7 @@ func NewScanner(logDB, gradesDB *mongo.Database, logger *zap.Logger, graderID, g
 // TriggerEvent represents a log event that triggered a rule evaluation.
 type TriggerEvent struct {
 	ID              primitive.ObjectID
-	PlayerID        string
+	UserID        string
 	EventKey        string
 	ServerTimestamp time.Time
 }
@@ -67,7 +67,7 @@ func (s *Scanner) Scan(ctx context.Context, triggerKeys []string) ([]TriggerEven
 	for i, entry := range entries {
 		events[i] = TriggerEvent{
 			ID:              entry.ID,
-			PlayerID:        entry.PlayerID,
+			UserID:        entry.UserID,
 			EventKey:        entry.EventKey,
 			ServerTimestamp: entry.ServerTimestamp,
 		}

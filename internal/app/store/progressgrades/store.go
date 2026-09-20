@@ -25,10 +25,10 @@ type Grade struct {
 	ActiveDurationSecs *float64       `bson:"activeDurationSecs,omitempty"` // Active time excluding gaps (seconds)
 }
 
-// PlayerGrades represents all grades for a single player.
-type PlayerGrades struct {
+// UserGrades represents all grades for a single user.
+type UserGrades struct {
 	Game        string             `bson:"game"`                  // Game identifier
-	PlayerID    string             `bson:"playerId"`              // Player identifier
+	UserID    string             `bson:"user_id"`              // User identifier
 	Grades      map[string][]Grade `bson:"grades"`                // Map of point ID to array of attempt grades
 	CurrentUnit string             `bson:"currentUnit,omitempty"` // Unit the student is currently in
 	LastUpdated time.Time          `bson:"lastUpdated"`           // When document was last modified
@@ -44,10 +44,10 @@ func New(db *mongo.Database) *Store {
 	return &Store{coll: db.Collection("progress_point_grades")}
 }
 
-// GetForPlayer retrieves grades for a player.
-func (s *Store) GetForPlayer(ctx context.Context, game, playerID string) (*PlayerGrades, error) {
-	var pg PlayerGrades
-	err := s.coll.FindOne(ctx, bson.M{"game": game, "playerId": playerID}).Decode(&pg)
+// GetForUser retrieves grades for a user.
+func (s *Store) GetForUser(ctx context.Context, game, userID string) (*UserGrades, error) {
+	var pg UserGrades
+	err := s.coll.FindOne(ctx, bson.M{"game": game, "user_id": userID}).Decode(&pg)
 	if err == mongo.ErrNoDocuments {
 		return nil, nil
 	}
@@ -57,17 +57,17 @@ func (s *Store) GetForPlayer(ctx context.Context, game, playerID string) (*Playe
 // AppendGrade appends or replaces the latest grade for a progress point.
 // If the last element for this point has status "active", it is replaced with the final grade
 // (preserving the attempt number). Otherwise, a new grade is appended.
-func (s *Store) AppendGrade(ctx context.Context, game, playerID, pointID string, grade Grade) error {
+func (s *Store) AppendGrade(ctx context.Context, game, userID, pointID string, grade Grade) error {
 	now := time.Now().UTC()
 	grade.ComputedAt = now
 
 	// Read current doc to determine array state
-	pg, err := s.GetForPlayer(ctx, game, playerID)
+	pg, err := s.GetForUser(ctx, game, userID)
 	if err != nil {
 		return err
 	}
 
-	filter := bson.M{"game": game, "playerId": playerID}
+	filter := bson.M{"game": game, "user_id": userID}
 
 	if pg != nil {
 		grades := pg.Grades[pointID]
@@ -103,9 +103,9 @@ func (s *Store) AppendGrade(ctx context.Context, game, playerID, pointID string,
 
 	// No doc exists — create with first grade
 	grade.Attempt = 1
-	doc := PlayerGrades{
+	doc := UserGrades{
 		Game:        game,
-		PlayerID:    playerID,
+		UserID:    userID,
 		Grades:      map[string][]Grade{pointID: {grade}},
 		LastUpdated: now,
 	}
@@ -117,10 +117,10 @@ func (s *Store) AppendGrade(ctx context.Context, game, playerID, pointID string,
 // No-op if the last element is already "active".
 // Appends a new active grade if last element is "passed" or "flagged" (new attempt).
 // Creates doc with active grade if no doc exists.
-func (s *Store) AppendActiveIfNeeded(ctx context.Context, game, playerID, pointID, ruleID string, startTime *time.Time) error {
+func (s *Store) AppendActiveIfNeeded(ctx context.Context, game, userID, pointID, ruleID string, startTime *time.Time) error {
 	now := time.Now().UTC()
 
-	pg, err := s.GetForPlayer(ctx, game, playerID)
+	pg, err := s.GetForUser(ctx, game, userID)
 	if err != nil {
 		return err
 	}
@@ -132,7 +132,7 @@ func (s *Store) AppendActiveIfNeeded(ctx context.Context, game, playerID, pointI
 		StartTime:  startTime,
 	}
 
-	filter := bson.M{"game": game, "playerId": playerID}
+	filter := bson.M{"game": game, "user_id": userID}
 
 	if pg != nil {
 		grades := pg.Grades[pointID]
@@ -158,9 +158,9 @@ func (s *Store) AppendActiveIfNeeded(ctx context.Context, game, playerID, pointI
 
 	// No doc — create
 	grade.Attempt = 1
-	doc := PlayerGrades{
+	doc := UserGrades{
 		Game:        game,
-		PlayerID:    playerID,
+		UserID:    userID,
 		Grades:      map[string][]Grade{pointID: {grade}},
 		LastUpdated: now,
 	}
@@ -169,10 +169,10 @@ func (s *Store) AppendActiveIfNeeded(ctx context.Context, game, playerID, pointI
 }
 
 // SetCurrentUnit updates the unit the student is currently in.
-func (s *Store) SetCurrentUnit(ctx context.Context, game, playerID, unitID string) error {
+func (s *Store) SetCurrentUnit(ctx context.Context, game, userID, unitID string) error {
 	now := time.Now().UTC()
 
-	filter := bson.M{"game": game, "playerId": playerID}
+	filter := bson.M{"game": game, "user_id": userID}
 	update := bson.M{
 		"$set": bson.M{
 			"currentUnit": unitID,
@@ -180,7 +180,7 @@ func (s *Store) SetCurrentUnit(ctx context.Context, game, playerID, unitID strin
 		},
 		"$setOnInsert": bson.M{
 			"game":     game,
-			"playerId": playerID,
+			"user_id": userID,
 		},
 	}
 
@@ -189,8 +189,8 @@ func (s *Store) SetCurrentUnit(ctx context.Context, game, playerID, unitID strin
 }
 
 // GetLatestGrade retrieves the latest grade for a specific point.
-func (s *Store) GetLatestGrade(ctx context.Context, game, playerID, pointID string) (*Grade, error) {
-	pg, err := s.GetForPlayer(ctx, game, playerID)
+func (s *Store) GetLatestGrade(ctx context.Context, game, userID, pointID string) (*Grade, error) {
+	pg, err := s.GetForUser(ctx, game, userID)
 	if err != nil || pg == nil {
 		return nil, err
 	}
@@ -203,17 +203,17 @@ func (s *Store) GetLatestGrade(ctx context.Context, game, playerID, pointID stri
 }
 
 // GetGradeHistory retrieves all grades for a specific point.
-func (s *Store) GetGradeHistory(ctx context.Context, game, playerID, pointID string) ([]Grade, error) {
-	pg, err := s.GetForPlayer(ctx, game, playerID)
+func (s *Store) GetGradeHistory(ctx context.Context, game, userID, pointID string) ([]Grade, error) {
+	pg, err := s.GetForUser(ctx, game, userID)
 	if err != nil || pg == nil {
 		return nil, err
 	}
 	return pg.Grades[pointID], nil
 }
 
-// ListPlayers returns all player IDs that have grades for a game.
-func (s *Store) ListPlayers(ctx context.Context, game string) ([]string, error) {
-	cur, err := s.coll.Find(ctx, bson.M{"game": game}, options.Find().SetProjection(bson.M{"playerId": 1}))
+// ListUsers returns all user IDs that have grades for a game.
+func (s *Store) ListUsers(ctx context.Context, game string) ([]string, error) {
+	cur, err := s.coll.Find(ctx, bson.M{"game": game}, options.Find().SetProjection(bson.M{"user_id": 1}))
 	if err != nil {
 		return nil, err
 	}
@@ -222,12 +222,12 @@ func (s *Store) ListPlayers(ctx context.Context, game string) ([]string, error) 
 	var players []string
 	for cur.Next(ctx) {
 		var doc struct {
-			PlayerID string `bson:"playerId"`
+			UserID string `bson:"user_id"`
 		}
 		if err := cur.Decode(&doc); err != nil {
 			continue
 		}
-		players = append(players, doc.PlayerID)
+		players = append(players, doc.UserID)
 	}
 	return players, cur.Err()
 }

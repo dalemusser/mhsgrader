@@ -17,11 +17,11 @@ func NewU3P5Rule() *U3P5Rule {
 	)}
 }
 
-func (r *U3P5Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string, ec EvalContext) (Result, error) {
+func (r *U3P5Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userID string, ec EvalContext) (Result, error) {
 	helper := NewLogDataHelper(db, game)
 	window := ec.Window
 
-	posCount, err := helper.CountEventInIDWindow(ctx, playerID, "DialogueNodeEvent:73:163", window)
+	posCount, err := helper.CountEventInIDWindow(ctx, userID, "DialogueNodeEvent:73:163", window)
 	if err != nil {
 		return Result{}, err
 	}
@@ -32,7 +32,7 @@ func (r *U3P5Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playe
 		"DialogueNodeEvent:73:171",
 	}
 
-	negCount, err := helper.CountEventsInWindow(ctx, playerID, negKeys, window)
+	negCount, err := helper.CountEventsInWindow(ctx, userID, negKeys, window)
 	if err != nil {
 		return Result{}, err
 	}

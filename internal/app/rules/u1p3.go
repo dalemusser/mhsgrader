@@ -16,7 +16,7 @@ func NewU1P3Rule() *U1P3Rule {
 	)}
 }
 
-func (r *U1P3Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string, ec EvalContext) (Result, error) {
+func (r *U1P3Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userID string, ec EvalContext) (Result, error) {
 	helper := NewLogDataHelper(db, game)
 	window := ec.Window
 
@@ -25,7 +25,7 @@ func (r *U1P3Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playe
 		"DialogueNodeEvent:70:33",
 	}
 
-	yellowCount, err := helper.CountEventsInWindow(ctx, playerID, yellowNodes, window)
+	yellowCount, err := helper.CountEventsInWindow(ctx, userID, yellowNodes, window)
 	if err != nil {
 		return Result{}, err
 	}

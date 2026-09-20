@@ -28,21 +28,21 @@ func cappedPenalty(cnt int64) int {
 	return 2
 }
 
-func (r *U3P2Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string, ec EvalContext) (Result, error) {
+func (r *U3P2Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userID string, ec EvalContext) (Result, error) {
 	helper := NewLogDataHelper(db, game)
 	window := ec.Window
 
-	c27, err := helper.CountEventInIDWindow(ctx, playerID, "DialogueNodeEvent:11:27", window)
+	c27, err := helper.CountEventInIDWindow(ctx, userID, "DialogueNodeEvent:11:27", window)
 	if err != nil {
 		return Result{}, err
 	}
 
-	c29, err := helper.CountEventInIDWindow(ctx, playerID, "DialogueNodeEvent:11:29", window)
+	c29, err := helper.CountEventInIDWindow(ctx, userID, "DialogueNodeEvent:11:29", window)
 	if err != nil {
 		return Result{}, err
 	}
 
-	c230, err := helper.CountEventInIDWindow(ctx, playerID, "DialogueNodeEvent:11:230", window)
+	c230, err := helper.CountEventInIDWindow(ctx, userID, "DialogueNodeEvent:11:230", window)
 	if err != nil {
 		return Result{}, err
 	}

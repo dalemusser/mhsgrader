@@ -17,12 +17,12 @@ func NewU5P4Rule() *U5P4Rule {
 	)}
 }
 
-func (r *U5P4Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string, ec EvalContext) (Result, error) {
+func (r *U5P4Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userID string, ec EvalContext) (Result, error) {
 	helper := NewLogDataHelper(db, game)
 	window := ec.Window
 
 	successKey := "DialogueNodeEvent:106:35"
-	hasSuccess, err := helper.HasEventInWindow(ctx, playerID, successKey, window)
+	hasSuccess, err := helper.HasEventInWindow(ctx, userID, successKey, window)
 	if err != nil {
 		return Result{}, err
 	}
@@ -38,7 +38,7 @@ func (r *U5P4Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playe
 		"DialogueNodeEvent:106:33", "DialogueNodeEvent:106:34",
 	}
 
-	negCount, err := helper.CountEventsInWindow(ctx, playerID, negKeys, window)
+	negCount, err := helper.CountEventsInWindow(ctx, userID, negKeys, window)
 	if err != nil {
 		return Result{}, err
 	}

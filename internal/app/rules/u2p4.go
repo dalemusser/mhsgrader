@@ -16,7 +16,7 @@ func NewU2P4Rule() *U2P4Rule {
 	)}
 }
 
-func (r *U2P4Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string, ec EvalContext) (Result, error) {
+func (r *U2P4Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userID string, ec EvalContext) (Result, error) {
 	helper := NewLogDataHelper(db, game)
 	window := ec.Window
 
@@ -28,12 +28,12 @@ func (r *U2P4Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playe
 		"DialogueNodeEvent:74:22",
 	}
 
-	hasSuccess, err := helper.HasEventInWindow(ctx, playerID, successKey, window)
+	hasSuccess, err := helper.HasEventInWindow(ctx, userID, successKey, window)
 	if err != nil {
 		return Result{}, err
 	}
 
-	badCount, err := helper.CountEventsInWindow(ctx, playerID, badKeys, window)
+	badCount, err := helper.CountEventsInWindow(ctx, userID, badKeys, window)
 	if err != nil {
 		return Result{}, err
 	}

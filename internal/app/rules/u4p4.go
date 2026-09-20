@@ -18,21 +18,21 @@ func NewU4P4Rule() *U4P4Rule {
 	)}
 }
 
-func (r *U4P4Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string, ec EvalContext) (Result, error) {
+func (r *U4P4Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userID string, ec EvalContext) (Result, error) {
 	helper := NewLogDataHelper(db, game)
 	window := ec.Window
 
 	score := 0
 
 	// Machine 1, floor 5, TopRow
-	cM1Top, err := helper.CountByEventTypeAndData(ctx, playerID, "soilMachine",
+	cM1Top, err := helper.CountByEventTypeAndData(ctx, userID, "soilMachine",
 		map[string]string{"floor": "5", "machine": "1", "row": "TopRow"}, window)
 	if err != nil {
 		return Result{}, err
 	}
 
 	// Machine 1, floor 5, BottomRow
-	cM1Bot, err := helper.CountByEventTypeAndData(ctx, playerID, "soilMachine",
+	cM1Bot, err := helper.CountByEventTypeAndData(ctx, userID, "soilMachine",
 		map[string]string{"floor": "5", "machine": "1", "row": "BottomRow"}, window)
 	if err != nil {
 		return Result{}, err
@@ -43,7 +43,7 @@ func (r *U4P4Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playe
 	}
 
 	// Machine 2, floor 5
-	cM2, err := helper.CountByEventTypeAndData(ctx, playerID, "soilMachine",
+	cM2, err := helper.CountByEventTypeAndData(ctx, userID, "soilMachine",
 		map[string]string{"floor": "5", "machine": "2"}, window)
 	if err != nil {
 		return Result{}, err
@@ -55,14 +55,14 @@ func (r *U4P4Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playe
 
 	// Dialogue success keys
 	successKeys := []string{"DialogueNodeEvent:107:4", "DialogueNodeEvent:107:5"}
-	successCount, err := helper.CountEventsInWindow(ctx, playerID, successKeys, window)
+	successCount, err := helper.CountEventsInWindow(ctx, userID, successKeys, window)
 	if err != nil {
 		return Result{}, err
 	}
 
 	// Dialogue negative keys
 	negKeys := []string{"DialogueNodeEvent:107:2", "DialogueNodeEvent:107:3", "DialogueNodeEvent:107:6"}
-	negCount, err := helper.CountEventsInWindow(ctx, playerID, negKeys, window)
+	negCount, err := helper.CountEventsInWindow(ctx, userID, negKeys, window)
 	if err != nil {
 		return Result{}, err
 	}

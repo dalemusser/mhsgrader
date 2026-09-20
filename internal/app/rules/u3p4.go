@@ -17,11 +17,11 @@ func NewU3P4Rule() *U3P4Rule {
 	)}
 }
 
-func (r *U3P4Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string, ec EvalContext) (Result, error) {
+func (r *U3P4Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userID string, ec EvalContext) (Result, error) {
 	helper := NewLogDataHelper(db, game)
 	window := ec.Window
 
-	hasGate, err := helper.HasEventInWindow(ctx, playerID, "DialogueNodeEvent:78:24", window)
+	hasGate, err := helper.HasEventInWindow(ctx, userID, "DialogueNodeEvent:78:24", window)
 	if err != nil {
 		return Result{}, err
 	}
@@ -35,7 +35,7 @@ func (r *U3P4Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playe
 		"DialogueNodeEvent:78:18", "DialogueNodeEvent:78:23",
 	}
 
-	count, err := helper.CountEventsInWindow(ctx, playerID, targetKeys, window)
+	count, err := helper.CountEventsInWindow(ctx, userID, targetKeys, window)
 	if err != nil {
 		return Result{}, err
 	}

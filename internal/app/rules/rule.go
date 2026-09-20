@@ -75,7 +75,7 @@ type Rule interface {
 
 	// Evaluate evaluates the rule for a specific player.
 	// Returns a Result indicating passed/flagged and any metrics.
-	Evaluate(ctx context.Context, db *mongo.Database, game, playerID string, ec EvalContext) (Result, error)
+	Evaluate(ctx context.Context, db *mongo.Database, game, userID string, ec EvalContext) (Result, error)
 }
 
 // BaseRule provides common functionality for rules.

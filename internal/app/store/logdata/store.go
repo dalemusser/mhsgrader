@@ -18,7 +18,7 @@ const collectionName = "logdata"
 type LogEntry struct {
 	ID              primitive.ObjectID     `bson:"_id"`
 	Game            string                 `bson:"game"`
-	PlayerID        string                 `bson:"playerId,omitempty"`
+	UserID        string                 `bson:"user_id,omitempty"`
 	EventType       string                 `bson:"eventType,omitempty"`
 	EventKey        string                 `bson:"eventKey,omitempty"` // For grading triggers
 	Timestamp       *time.Time             `bson:"timestamp,omitempty"`
@@ -69,10 +69,10 @@ func (s *Store) ScanTriggers(ctx context.Context, game string, triggerKeys []str
 
 // CountByEventKey counts logs matching a game, player, and eventKey.
 // Uses exact string matching for eventKey.
-func (s *Store) CountByEventKey(ctx context.Context, game, playerID, eventKey string) (int64, error) {
+func (s *Store) CountByEventKey(ctx context.Context, game, userID, eventKey string) (int64, error) {
 	filter := bson.M{
 		"game":     game,
-		"playerId": playerID,
+		"user_id": userID,
 		"eventKey": eventKey,
 	}
 	return s.coll.CountDocuments(ctx, filter)
@@ -80,10 +80,10 @@ func (s *Store) CountByEventKey(ctx context.Context, game, playerID, eventKey st
 
 // CountByEventKeyAfter counts logs matching criteria after a given timestamp.
 // Uses exact string matching for eventKey.
-func (s *Store) CountByEventKeyAfter(ctx context.Context, game, playerID, eventKey string, after time.Time) (int64, error) {
+func (s *Store) CountByEventKeyAfter(ctx context.Context, game, userID, eventKey string, after time.Time) (int64, error) {
 	filter := bson.M{
 		"game":            game,
-		"playerId":        playerID,
+		"user_id":        userID,
 		"eventKey":        eventKey,
 		"serverTimestamp": bson.M{"$gte": after},
 	}
@@ -92,10 +92,10 @@ func (s *Store) CountByEventKeyAfter(ctx context.Context, game, playerID, eventK
 
 // ExistsByEventKey checks if any log exists matching the criteria.
 // Uses exact string matching for eventKey.
-func (s *Store) ExistsByEventKey(ctx context.Context, game, playerID, eventKey string) (bool, error) {
+func (s *Store) ExistsByEventKey(ctx context.Context, game, userID, eventKey string) (bool, error) {
 	count, err := s.coll.CountDocuments(ctx, bson.M{
 		"game":     game,
-		"playerId": playerID,
+		"user_id": userID,
 		"eventKey": eventKey,
 	}, options.Count().SetLimit(1))
 	return count > 0, err
@@ -103,10 +103,10 @@ func (s *Store) ExistsByEventKey(ctx context.Context, game, playerID, eventKey s
 
 // ExistsByEventKeys checks if any log exists matching any of the given eventKeys.
 // Uses exact string matching for eventKeys.
-func (s *Store) ExistsByEventKeys(ctx context.Context, game, playerID string, eventKeys []string) (bool, error) {
+func (s *Store) ExistsByEventKeys(ctx context.Context, game, userID string, eventKeys []string) (bool, error) {
 	filter := bson.M{
 		"game":     game,
-		"playerId": playerID,
+		"user_id": userID,
 		"eventKey": bson.M{"$in": eventKeys},
 	}
 	count, err := s.coll.CountDocuments(ctx, filter, options.Count().SetLimit(1))
@@ -115,10 +115,10 @@ func (s *Store) ExistsByEventKeys(ctx context.Context, game, playerID string, ev
 
 // FindByEventKey finds all logs matching the criteria.
 // Uses exact string matching for eventKey.
-func (s *Store) FindByEventKey(ctx context.Context, game, playerID, eventKey string) ([]LogEntry, error) {
+func (s *Store) FindByEventKey(ctx context.Context, game, userID, eventKey string) ([]LogEntry, error) {
 	filter := bson.M{
 		"game":     game,
-		"playerId": playerID,
+		"user_id": userID,
 		"eventKey": eventKey,
 	}
 	opts := options.Find().SetSort(bson.D{{Key: "serverTimestamp", Value: 1}})
@@ -136,12 +136,12 @@ func (s *Store) FindByEventKey(ctx context.Context, game, playerID, eventKey str
 	return entries, nil
 }
 
-// GetMostRecent gets the most recent log for a player with a specific eventKey.
+// GetMostRecent gets the most recent log for a user with a specific eventKey.
 // Uses exact string matching for eventKey.
-func (s *Store) GetMostRecent(ctx context.Context, game, playerID, eventKey string) (*LogEntry, error) {
+func (s *Store) GetMostRecent(ctx context.Context, game, userID, eventKey string) (*LogEntry, error) {
 	filter := bson.M{
 		"game":     game,
-		"playerId": playerID,
+		"user_id": userID,
 		"eventKey": eventKey,
 	}
 	opts := options.FindOne().SetSort(bson.D{{Key: "serverTimestamp", Value: -1}})
@@ -155,8 +155,8 @@ func (s *Store) GetMostRecent(ctx context.Context, game, playerID, eventKey stri
 }
 
 // GetWindowStart finds the timestamp of an event that marks the start of a grading window.
-func (s *Store) GetWindowStart(ctx context.Context, game, playerID, eventKey string) (*time.Time, error) {
-	entry, err := s.GetMostRecent(ctx, game, playerID, eventKey)
+func (s *Store) GetWindowStart(ctx context.Context, game, userID, eventKey string) (*time.Time, error) {
+	entry, err := s.GetMostRecent(ctx, game, userID, eventKey)
 	if err != nil || entry == nil {
 		return nil, err
 	}
@@ -165,10 +165,10 @@ func (s *Store) GetWindowStart(ctx context.Context, game, playerID, eventKey str
 
 // CountByEventKeyInWindow counts logs in a time window.
 // Uses exact string matching for eventKey.
-func (s *Store) CountByEventKeyInWindow(ctx context.Context, game, playerID, eventKey string, windowStart time.Time) (int64, error) {
+func (s *Store) CountByEventKeyInWindow(ctx context.Context, game, userID, eventKey string, windowStart time.Time) (int64, error) {
 	filter := bson.M{
 		"game":            game,
-		"playerId":        playerID,
+		"user_id":        userID,
 		"eventKey":        eventKey,
 		"serverTimestamp": bson.M{"$gte": windowStart},
 	}
@@ -177,10 +177,10 @@ func (s *Store) CountByEventKeyInWindow(ctx context.Context, game, playerID, eve
 
 // FindByEventKeyInWindow finds logs in a time window.
 // Uses exact string matching for eventKey.
-func (s *Store) FindByEventKeyInWindow(ctx context.Context, game, playerID, eventKey string, windowStart time.Time) ([]LogEntry, error) {
+func (s *Store) FindByEventKeyInWindow(ctx context.Context, game, userID, eventKey string, windowStart time.Time) ([]LogEntry, error) {
 	filter := bson.M{
 		"game":            game,
-		"playerId":        playerID,
+		"user_id":        userID,
 		"eventKey":        eventKey,
 		"serverTimestamp": bson.M{"$gte": windowStart},
 	}
@@ -203,12 +203,12 @@ func (s *Store) FindByEventKeyInWindow(ctx context.Context, game, playerID, even
 // _id-based windowing methods for replay-safe grading
 // ============================================================================
 
-// FindAllInIDWindow returns all log entries for a player in _id range [startID, endID],
+// FindAllInIDWindow returns all log entries for a user in _id range [startID, endID],
 // sorted by _id ascending. Used for active duration calculation.
-func (s *Store) FindAllInIDWindow(ctx context.Context, game, playerID string, startID, endID primitive.ObjectID) ([]LogEntry, error) {
+func (s *Store) FindAllInIDWindow(ctx context.Context, game, userID string, startID, endID primitive.ObjectID) ([]LogEntry, error) {
 	filter := bson.M{
 		"game":     game,
-		"playerId": playerID,
+		"user_id": userID,
 		"_id":      bson.M{"$gte": startID, "$lte": endID},
 	}
 	opts := options.Find().
@@ -229,10 +229,10 @@ func (s *Store) FindAllInIDWindow(ctx context.Context, game, playerID string, st
 }
 
 // GetLatestByEventKey gets the most recent log by _id (not timestamp).
-func (s *Store) GetLatestByEventKey(ctx context.Context, game, playerID, eventKey string) (*LogEntry, error) {
+func (s *Store) GetLatestByEventKey(ctx context.Context, game, userID, eventKey string) (*LogEntry, error) {
 	filter := bson.M{
 		"game":     game,
-		"playerId": playerID,
+		"user_id": userID,
 		"eventKey": eventKey,
 	}
 	opts := options.FindOne().SetSort(bson.D{{Key: "_id", Value: -1}})
@@ -247,10 +247,10 @@ func (s *Store) GetLatestByEventKey(ctx context.Context, game, playerID, eventKe
 
 // GetLatestByEventKeys gets the most recent log matching any of the given eventKeys, by _id.
 // Used to find the most recent start event when a rule has multiple start keys.
-func (s *Store) GetLatestByEventKeys(ctx context.Context, game, playerID string, eventKeys []string) (*LogEntry, error) {
+func (s *Store) GetLatestByEventKeys(ctx context.Context, game, userID string, eventKeys []string) (*LogEntry, error) {
 	filter := bson.M{
 		"game":     game,
-		"playerId": playerID,
+		"user_id": userID,
 		"eventKey": bson.M{"$in": eventKeys},
 	}
 	opts := options.FindOne().SetSort(bson.D{{Key: "_id", Value: -1}})
@@ -265,11 +265,11 @@ func (s *Store) GetLatestByEventKeys(ctx context.Context, game, playerID string,
 
 // GetLatestByEventKeysBefore gets the most recent log matching any of the given
 // eventKeys that occurred before the given _id. This ensures we find the correct
-// start event even if the player has replayed content (newer start after end).
-func (s *Store) GetLatestByEventKeysBefore(ctx context.Context, game, playerID string, eventKeys []string, beforeID primitive.ObjectID) (*LogEntry, error) {
+// start event even if the user has replayed content (newer start after end).
+func (s *Store) GetLatestByEventKeysBefore(ctx context.Context, game, userID string, eventKeys []string, beforeID primitive.ObjectID) (*LogEntry, error) {
 	filter := bson.M{
 		"game":     game,
-		"playerId": playerID,
+		"user_id": userID,
 		"eventKey": bson.M{"$in": eventKeys},
 		"_id":      bson.M{"$lt": beforeID},
 	}
@@ -284,10 +284,10 @@ func (s *Store) GetLatestByEventKeysBefore(ctx context.Context, game, playerID s
 }
 
 // GetPreviousByEventKey gets the most recent log before a given _id.
-func (s *Store) GetPreviousByEventKey(ctx context.Context, game, playerID, eventKey string, beforeID primitive.ObjectID) (*LogEntry, error) {
+func (s *Store) GetPreviousByEventKey(ctx context.Context, game, userID, eventKey string, beforeID primitive.ObjectID) (*LogEntry, error) {
 	filter := bson.M{
 		"game":     game,
-		"playerId": playerID,
+		"user_id": userID,
 		"eventKey": eventKey,
 		"_id":      bson.M{"$lt": beforeID},
 	}
@@ -303,10 +303,10 @@ func (s *Store) GetPreviousByEventKey(ctx context.Context, game, playerID, event
 
 // ExistsByEventKeyInIDWindow checks if event exists in _id range (startID, endID].
 // The range is exclusive on startID and inclusive on endID.
-func (s *Store) ExistsByEventKeyInIDWindow(ctx context.Context, game, playerID, eventKey string, startID, endID primitive.ObjectID) (bool, error) {
+func (s *Store) ExistsByEventKeyInIDWindow(ctx context.Context, game, userID, eventKey string, startID, endID primitive.ObjectID) (bool, error) {
 	filter := bson.M{
 		"game":     game,
-		"playerId": playerID,
+		"user_id": userID,
 		"eventKey": eventKey,
 		"_id":      bson.M{"$gt": startID, "$lte": endID},
 	}
@@ -315,10 +315,10 @@ func (s *Store) ExistsByEventKeyInIDWindow(ctx context.Context, game, playerID, 
 }
 
 // ExistsByEventKeysInIDWindow checks if any event exists in _id range (startID, endID].
-func (s *Store) ExistsByEventKeysInIDWindow(ctx context.Context, game, playerID string, eventKeys []string, startID, endID primitive.ObjectID) (bool, error) {
+func (s *Store) ExistsByEventKeysInIDWindow(ctx context.Context, game, userID string, eventKeys []string, startID, endID primitive.ObjectID) (bool, error) {
 	filter := bson.M{
 		"game":     game,
-		"playerId": playerID,
+		"user_id": userID,
 		"eventKey": bson.M{"$in": eventKeys},
 		"_id":      bson.M{"$gt": startID, "$lte": endID},
 	}
@@ -327,10 +327,10 @@ func (s *Store) ExistsByEventKeysInIDWindow(ctx context.Context, game, playerID 
 }
 
 // CountByEventKeyInIDWindow counts events in _id range (startID, endID].
-func (s *Store) CountByEventKeyInIDWindow(ctx context.Context, game, playerID, eventKey string, startID, endID primitive.ObjectID) (int64, error) {
+func (s *Store) CountByEventKeyInIDWindow(ctx context.Context, game, userID, eventKey string, startID, endID primitive.ObjectID) (int64, error) {
 	filter := bson.M{
 		"game":     game,
-		"playerId": playerID,
+		"user_id": userID,
 		"eventKey": eventKey,
 		"_id":      bson.M{"$gt": startID, "$lte": endID},
 	}
@@ -338,10 +338,10 @@ func (s *Store) CountByEventKeyInIDWindow(ctx context.Context, game, playerID, e
 }
 
 // CountByEventKeysInIDWindow counts events matching any key in _id range (startID, endID].
-func (s *Store) CountByEventKeysInIDWindow(ctx context.Context, game, playerID string, eventKeys []string, startID, endID primitive.ObjectID) (int64, error) {
+func (s *Store) CountByEventKeysInIDWindow(ctx context.Context, game, userID string, eventKeys []string, startID, endID primitive.ObjectID) (int64, error) {
 	filter := bson.M{
 		"game":     game,
-		"playerId": playerID,
+		"user_id": userID,
 		"eventKey": bson.M{"$in": eventKeys},
 		"_id":      bson.M{"$gt": startID, "$lte": endID},
 	}
@@ -349,10 +349,10 @@ func (s *Store) CountByEventKeysInIDWindow(ctx context.Context, game, playerID s
 }
 
 // ExistsByEventTypeAndDataInIDWindow checks for eventType + data.field match in window.
-func (s *Store) ExistsByEventTypeAndDataInIDWindow(ctx context.Context, game, playerID, eventType, dataField, dataValue string, startID, endID primitive.ObjectID) (bool, error) {
+func (s *Store) ExistsByEventTypeAndDataInIDWindow(ctx context.Context, game, userID, eventType, dataField, dataValue string, startID, endID primitive.ObjectID) (bool, error) {
 	filter := bson.M{
 		"game":              game,
-		"playerId":          playerID,
+		"user_id":          userID,
 		"eventType":         eventType,
 		"data." + dataField: dataValue,
 		"_id":               bson.M{"$gt": startID, "$lte": endID},
@@ -362,10 +362,10 @@ func (s *Store) ExistsByEventTypeAndDataInIDWindow(ctx context.Context, game, pl
 }
 
 // CountByEventTypeAndDataInIDWindow counts events matching eventType + data fields in window.
-func (s *Store) CountByEventTypeAndDataInIDWindow(ctx context.Context, game, playerID, eventType string, dataFilter map[string]string, startID, endID primitive.ObjectID) (int64, error) {
+func (s *Store) CountByEventTypeAndDataInIDWindow(ctx context.Context, game, userID, eventType string, dataFilter map[string]string, startID, endID primitive.ObjectID) (int64, error) {
 	filter := bson.M{
 		"game":      game,
-		"playerId":  playerID,
+		"user_id":  userID,
 		"eventType": eventType,
 		"_id":       bson.M{"$gt": startID, "$lte": endID},
 	}
@@ -377,10 +377,10 @@ func (s *Store) CountByEventTypeAndDataInIDWindow(ctx context.Context, game, pla
 
 // FindByEventTypeAndDataInIDWindow finds events matching eventType + data fields in window.
 // Returns sorted by _id descending (latest first).
-func (s *Store) FindByEventTypeAndDataInIDWindow(ctx context.Context, game, playerID, eventType string, dataFilter map[string]string, startID, endID primitive.ObjectID) ([]LogEntry, error) {
+func (s *Store) FindByEventTypeAndDataInIDWindow(ctx context.Context, game, userID, eventType string, dataFilter map[string]string, startID, endID primitive.ObjectID) ([]LogEntry, error) {
 	filter := bson.M{
 		"game":      game,
-		"playerId":  playerID,
+		"user_id":  userID,
 		"eventType": eventType,
 		"_id":       bson.M{"$gt": startID, "$lte": endID},
 	}
@@ -403,10 +403,10 @@ func (s *Store) FindByEventTypeAndDataInIDWindow(ctx context.Context, game, play
 }
 
 // FindLatestByEventTypeAndDataInIDWindow finds the most recent event matching eventType + data in window.
-func (s *Store) FindLatestByEventTypeAndDataInIDWindow(ctx context.Context, game, playerID, eventType string, dataFilter map[string]string, startID, endID primitive.ObjectID) (*LogEntry, error) {
+func (s *Store) FindLatestByEventTypeAndDataInIDWindow(ctx context.Context, game, userID, eventType string, dataFilter map[string]string, startID, endID primitive.ObjectID) (*LogEntry, error) {
 	filter := bson.M{
 		"game":      game,
-		"playerId":  playerID,
+		"user_id":  userID,
 		"eventType": eventType,
 		"_id":       bson.M{"$gt": startID, "$lte": endID},
 	}
@@ -425,11 +425,11 @@ func (s *Store) FindLatestByEventTypeAndDataInIDWindow(ctx context.Context, game
 
 // FindEventPairByEventTypeAndDataInIDWindow finds the first and last events matching
 // eventType + data fields in a window. Used for timing calculations.
-func (s *Store) FindEventPairByEventTypeAndDataInIDWindow(ctx context.Context, game, playerID, eventType string, firstDataFilter, lastDataFilter map[string]string, startID, endID primitive.ObjectID) (first *LogEntry, last *LogEntry, err error) {
+func (s *Store) FindEventPairByEventTypeAndDataInIDWindow(ctx context.Context, game, userID, eventType string, firstDataFilter, lastDataFilter map[string]string, startID, endID primitive.ObjectID) (first *LogEntry, last *LogEntry, err error) {
 	// Find first matching event
 	firstFilter := bson.M{
 		"game":      game,
-		"playerId":  playerID,
+		"user_id":  userID,
 		"eventType": eventType,
 		"_id":       bson.M{"$gt": startID, "$lte": endID},
 	}
@@ -450,7 +450,7 @@ func (s *Store) FindEventPairByEventTypeAndDataInIDWindow(ctx context.Context, g
 	// Find last matching event
 	lastFilter := bson.M{
 		"game":      game,
-		"playerId":  playerID,
+		"user_id":  userID,
 		"eventType": eventType,
 		"_id":       bson.M{"$gt": startID, "$lte": endID},
 	}

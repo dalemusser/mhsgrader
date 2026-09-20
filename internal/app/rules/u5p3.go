@@ -17,7 +17,7 @@ func NewU5P3Rule() *U5P3Rule {
 	)}
 }
 
-func (r *U5P3Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string, ec EvalContext) (Result, error) {
+func (r *U5P3Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userID string, ec EvalContext) (Result, error) {
 	helper := NewLogDataHelper(db, game)
 	window := ec.Window
 
@@ -35,7 +35,7 @@ func (r *U5P3Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playe
 		"DialogueNodeEvent:108:89", "DialogueNodeEvent:108:90", "DialogueNodeEvent:108:91",
 	}
 
-	count, err := helper.CountEventsInWindow(ctx, playerID, negKeys, window)
+	count, err := helper.CountEventsInWindow(ctx, userID, negKeys, window)
 	if err != nil {
 		return Result{}, err
 	}

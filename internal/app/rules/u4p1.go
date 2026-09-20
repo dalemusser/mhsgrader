@@ -18,14 +18,14 @@ func NewU4P1Rule() *U4P1Rule {
 	)}
 }
 
-func (r *U4P1Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string, ec EvalContext) (Result, error) {
+func (r *U4P1Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userID string, ec EvalContext) (Result, error) {
 	helper := NewLogDataHelper(db, game)
 	window := ec.Window
 
 	score := 0.0
 
 	// Check for correct choice
-	hasCorrect, err := helper.HasEventInWindow(ctx, playerID, "DialogueNodeEvent:88:5", window)
+	hasCorrect, err := helper.HasEventInWindow(ctx, userID, "DialogueNodeEvent:88:5", window)
 	if err != nil {
 		return Result{}, err
 	}
@@ -37,7 +37,7 @@ func (r *U4P1Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playe
 	startData := map[string]string{"Soil Key Puzzle Status": "Started"}
 	endData := map[string]string{"Soil Key Puzzle Status": "Finished"}
 
-	startEvent, endEvent, err := helper.FindEventPairByEventTypeAndData(ctx, playerID,
+	startEvent, endEvent, err := helper.FindEventPairByEventTypeAndData(ctx, userID,
 		"Soil Key Puzzle", startData, endData, window)
 	if err != nil {
 		return Result{}, err

@@ -47,17 +47,17 @@ func (e *Evaluator) EvaluateAndStore(ctx context.Context, event TriggerEvent) er
 
 	// Check if this is a unit start event
 	if unitID := e.registry.GetUnitForStartKey(event.EventKey); unitID != "" {
-		if err := e.gradeStore.SetCurrentUnit(ctx, e.game, event.PlayerID, unitID); err != nil {
+		if err := e.gradeStore.SetCurrentUnit(ctx, e.game, event.UserID, unitID); err != nil {
 			e.logger.Error("failed to set current unit",
 				zap.String("unitId", unitID),
-				zap.String("playerId", event.PlayerID),
+				zap.String("user_id", event.UserID),
 				zap.Error(err),
 			)
 			firstErr = errors.Join(firstErr, err)
 		} else {
 			e.logger.Debug("current unit updated",
 				zap.String("unitId", unitID),
-				zap.String("playerId", event.PlayerID),
+				zap.String("user_id", event.UserID),
 			)
 		}
 	}
@@ -66,10 +66,10 @@ func (e *Evaluator) EvaluateAndStore(ctx context.Context, event TriggerEvent) er
 	startRules := e.registry.GetStartRulesForKey(event.EventKey)
 	for _, rule := range startRules {
 		startTime := event.ServerTimestamp
-		if err := e.gradeStore.AppendActiveIfNeeded(ctx, e.game, event.PlayerID, rule.PointID(), rule.ID(), &startTime); err != nil {
+		if err := e.gradeStore.AppendActiveIfNeeded(ctx, e.game, event.UserID, rule.PointID(), rule.ID(), &startTime); err != nil {
 			e.logger.Error("failed to set active status",
 				zap.String("rule", rule.ID()),
-				zap.String("playerId", event.PlayerID),
+				zap.String("user_id", event.UserID),
 				zap.Error(err),
 			)
 			firstErr = errors.Join(firstErr, err)
@@ -77,7 +77,7 @@ func (e *Evaluator) EvaluateAndStore(ctx context.Context, event TriggerEvent) er
 		}
 		e.logger.Debug("active status set",
 			zap.String("rule", rule.ID()),
-			zap.String("playerId", event.PlayerID),
+			zap.String("user_id", event.UserID),
 			zap.String("pointId", rule.PointID()),
 		)
 	}
@@ -95,11 +95,11 @@ func (e *Evaluator) EvaluateAndStore(ctx context.Context, event TriggerEvent) er
 		var startEntry *logdata.LogEntry
 		if len(startKeys) > 0 {
 			var err error
-			startEntry, err = e.logStore.GetLatestByEventKeysBefore(ctx, e.game, event.PlayerID, startKeys, event.ID)
+			startEntry, err = e.logStore.GetLatestByEventKeysBefore(ctx, e.game, event.UserID, startKeys, event.ID)
 			if err != nil {
 				e.logger.Warn("failed to look up start event for EvalContext",
 					zap.String("rule", rule.ID()),
-					zap.String("playerId", event.PlayerID),
+					zap.String("user_id", event.UserID),
 					zap.Error(err),
 				)
 			}
@@ -118,11 +118,11 @@ func (e *Evaluator) EvaluateAndStore(ctx context.Context, event TriggerEvent) er
 			}
 		}
 
-		result, err := rule.Evaluate(ctx, e.logDB, e.game, event.PlayerID, ec)
+		result, err := rule.Evaluate(ctx, e.logDB, e.game, event.UserID, ec)
 		if err != nil {
 			e.logger.Error("rule evaluation failed",
 				zap.String("rule", rule.ID()),
-				zap.String("playerId", event.PlayerID),
+				zap.String("user_id", event.UserID),
 				zap.Error(err),
 			)
 			firstErr = errors.Join(firstErr, err)
@@ -143,10 +143,10 @@ func (e *Evaluator) EvaluateAndStore(ctx context.Context, event TriggerEvent) er
 		grade.DurationSecs = e.calcDurationFromStart(startEntry, event)
 		grade.ActiveDurationSecs = e.calcActiveDurationFromStart(ctx, startEntry, event, rule)
 
-		if err := e.gradeStore.AppendGrade(ctx, e.game, event.PlayerID, rule.PointID(), grade); err != nil {
+		if err := e.gradeStore.AppendGrade(ctx, e.game, event.UserID, rule.PointID(), grade); err != nil {
 			e.logger.Error("failed to store grade",
 				zap.String("rule", rule.ID()),
-				zap.String("playerId", event.PlayerID),
+				zap.String("user_id", event.UserID),
 				zap.Error(err),
 			)
 			firstErr = errors.Join(firstErr, err)
@@ -155,7 +155,7 @@ func (e *Evaluator) EvaluateAndStore(ctx context.Context, event TriggerEvent) er
 
 		e.logger.Debug("grade stored",
 			zap.String("rule", rule.ID()),
-			zap.String("playerId", event.PlayerID),
+			zap.String("user_id", event.UserID),
 			zap.String("pointId", rule.PointID()),
 			zap.String("status", result.Status),
 		)
@@ -187,11 +187,11 @@ func (e *Evaluator) calcActiveDurationFromStart(ctx context.Context, startEntry 
 	}
 
 	// Get all log entries for this player between start and end events
-	entries, err := e.logStore.FindAllInIDWindow(ctx, e.game, endEvent.PlayerID, startEntry.ID, endEvent.ID)
+	entries, err := e.logStore.FindAllInIDWindow(ctx, e.game, endEvent.UserID, startEntry.ID, endEvent.ID)
 	if err != nil {
 		e.logger.Warn("failed to fetch log entries for active duration",
 			zap.String("rule", rule.ID()),
-			zap.String("playerId", endEvent.PlayerID),
+			zap.String("user_id", endEvent.UserID),
 			zap.Error(err),
 		)
 		return nil

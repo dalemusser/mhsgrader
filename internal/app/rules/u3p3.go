@@ -32,7 +32,7 @@ func u3p3BaseScore(count int64) int {
 	return 0
 }
 
-func (r *U3P3Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playerID string, ec EvalContext) (Result, error) {
+func (r *U3P3Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userID string, ec EvalContext) (Result, error) {
 	helper := NewLogDataHelper(db, game)
 	window := ec.Window
 
@@ -46,12 +46,12 @@ func (r *U3P3Rule) Evaluate(ctx context.Context, db *mongo.Database, game, playe
 		"DialogueNodeEvent:84:47",
 	}
 
-	count, err := helper.CountEventsInWindow(ctx, playerID, targetKeys, window)
+	count, err := helper.CountEventsInWindow(ctx, userID, targetKeys, window)
 	if err != nil {
 		return Result{}, err
 	}
 
-	hasBonus, err := helper.HasEventTypeWithDataInWindow(ctx, playerID,
+	hasBonus, err := helper.HasEventTypeWithDataInWindow(ctx, userID,
 		"argumentationToolEvent", "toolName", "BackingInfoPanel - Pollution Site Data", window)
 	if err != nil {
 		return Result{}, err

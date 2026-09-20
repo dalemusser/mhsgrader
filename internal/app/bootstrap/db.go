@@ -81,9 +81,9 @@ func ensureProgressGradesIndexes(ctx context.Context, db *mongo.Database) error 
 	_, err := coll.Indexes().CreateOne(ctx, mongo.IndexModel{
 		Keys: bson.D{
 			{Key: "game", Value: 1},
-			{Key: "playerId", Value: 1},
+			{Key: "user_id", Value: 1},
 		},
-		Options: options.Index().SetUnique(true).SetName("uniq_progress_game_player"),
+		Options: options.Index().SetUnique(true).SetName("uniq_progress_game_user_id"),
 	})
 	return err
 }
@@ -112,11 +112,11 @@ func ensureLogdataIndexes(ctx context.Context, db *mongo.Database) error {
 		{
 			Keys: bson.D{
 				{Key: "game", Value: 1},
-				{Key: "playerId", Value: 1},
+				{Key: "user_id", Value: 1},
 				{Key: "eventKey", Value: 1},
 				{Key: "serverTimestamp", Value: 1},
 			},
-			Options: options.Index().SetName("idx_logdata_grader_player_event_ts"),
+			Options: options.Index().SetName("idx_logdata_grader_user_event_ts"),
 		},
 		// _id-windowed grading queries: player + eventKey with _id range
 		// Used by GetLatestByEventKeysBefore, ExistsByEventKeyInIDWindow,
@@ -124,32 +124,32 @@ func ensureLogdataIndexes(ctx context.Context, db *mongo.Database) error {
 		{
 			Keys: bson.D{
 				{Key: "game", Value: 1},
-				{Key: "playerId", Value: 1},
+				{Key: "user_id", Value: 1},
 				{Key: "eventKey", Value: 1},
 				{Key: "_id", Value: 1},
 			},
-			Options: options.Index().SetName("idx_logdata_grader_player_event_id"),
+			Options: options.Index().SetName("idx_logdata_grader_user_event_id"),
 		},
 		// _id-windowed player queries without eventKey filter
 		// Used by FindAllInIDWindow for active duration calculation
 		{
 			Keys: bson.D{
 				{Key: "game", Value: 1},
-				{Key: "playerId", Value: 1},
+				{Key: "user_id", Value: 1},
 				{Key: "_id", Value: 1},
 			},
-			Options: options.Index().SetName("idx_logdata_grader_player_id"),
+			Options: options.Index().SetName("idx_logdata_grader_user_id"),
 		},
 		// _id-windowed eventType queries for machine/box interaction grading
 		// Used by CountByEventTypeAndDataInIDWindow, FindLatestByEventTypeAndDataInIDWindow, etc.
 		{
 			Keys: bson.D{
 				{Key: "game", Value: 1},
-				{Key: "playerId", Value: 1},
+				{Key: "user_id", Value: 1},
 				{Key: "eventType", Value: 1},
 				{Key: "_id", Value: 1},
 			},
-			Options: options.Index().SetName("idx_logdata_grader_player_type_id"),
+			Options: options.Index().SetName("idx_logdata_grader_user_type_id"),
 		},
 	}
 

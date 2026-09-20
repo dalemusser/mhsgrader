@@ -89,7 +89,7 @@ func (e *Engine) tick(ctx context.Context, triggerKeys []string) error {
 		if err := e.evaluator.EvaluateAndStore(ctx, event); err != nil {
 			e.logger.Error("evaluation failed, stopping batch",
 				zap.String("eventKey", event.EventKey),
-				zap.String("playerId", event.PlayerID),
+				zap.String("user_id", event.UserID),
 				zap.Error(err),
 			)
 			break
