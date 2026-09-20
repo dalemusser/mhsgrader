@@ -90,6 +90,8 @@ MHSGRADER_TEST_UNITS=2 \
 go test ./internal/app/grader/ -run TestFixtureReplay -v 2>&1 | grep -E "fixture .*: colors|u2p[0-9] |^(ok|FAIL)"
 ```
 
+(In an agent worktree under `.claude/worktrees/`, prefix go commands with `GOWORK=off`: the workspace `go.work` does not list worktree directories.)
+
 The replay must show every point of the unit `ok` for colour **and** for
 reason codes + variables on all five fixtures. Needs a local MongoDB
 (`mongodb://localhost:27017` or `MHSGRADER_TEST_MONGO_URI`).
