@@ -6,33 +6,41 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-// U3P5Rule — Part of a Balanced Ecosystem: Weighted pos/neg scoring.
-// score = posCount * 1.0 - negCount * 0.5; Green if >= 3.
+// U3P5Rule — Plant the Superfruit Seeds: the student plants four seeds in
+// plots that receive the super-nutrient.
+//
+// Spec: mhsgrading/grading-logic/mhs-unit3-point5-grading.md (2026-09).
+// Window: previous DialogueNodeEvent:10:194 (exclusive) → this one (inclusive).
+// score = posCount·1.0 − negCount·0.5; green iff score ≥ 2.5 (the production
+// script; the rule table's ≥ 3 is flagged for reconciliation in the doc).
+// Reason EXCESS_WRONG_PLANTINGS: wrong_planting_number = wrong-spot feedback
+// count (73:164 first wrong, 73:168 intermediate, 73:171 fourth wrong).
 type U3P5Rule struct{ BaseRule }
 
 func NewU3P5Rule() *U3P5Rule {
-	return &U3P5Rule{NewBaseRule(3, 5, "v2",
+	return &U3P5Rule{NewBaseRule(3, 5, "v3",
 		[]string{"DialogueNodeEvent:73:200"},
 		[]string{"DialogueNodeEvent:10:194"},
+		WithWindow(WindowPrevTrigger),
 	)}
 }
 
 func (r *U3P5Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userID string, ec EvalContext) (Result, error) {
 	helper := NewLogDataHelper(db, game)
-	window := ec.Window
+	w := ec.Window
 
-	posCount, err := helper.CountEventInIDWindow(ctx, userID, "DialogueNodeEvent:73:163", window)
+	const posKey = "DialogueNodeEvent:73:163"
+	negKeys := []string{
+		"DialogueNodeEvent:73:164", // 1st wrong spot
+		"DialogueNodeEvent:73:168", // intermediate wrong spot (repeats)
+		"DialogueNodeEvent:73:171", // 4th wrong spot, activity terminates
+	}
+
+	posCount, err := helper.CountEventInIDWindow(ctx, userID, posKey, w)
 	if err != nil {
 		return Result{}, err
 	}
-
-	negKeys := []string{
-		"DialogueNodeEvent:73:164",
-		"DialogueNodeEvent:73:168",
-		"DialogueNodeEvent:73:171",
-	}
-
-	negCount, err := helper.CountEventsInWindow(ctx, userID, negKeys, window)
+	negCount, err := helper.CountEventsInWindow(ctx, userID, negKeys, w)
 	if err != nil {
 		return Result{}, err
 	}
@@ -40,12 +48,17 @@ func (r *U3P5Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userI
 	score := float64(posCount)*1.0 - float64(negCount)*0.5
 
 	metrics := map[string]any{
-		"posCount":     posCount,
-		"score":        score,
-		"mistakeCount": negCount,
+		"mistakeCount":          negCount,
+		"posCount":              posCount,
+		"negCount":              negCount,
+		"score":                 score,
+		"wrong_planting_number": negCount,
 	}
-	if score >= 3.0 {
+	if score >= 2.5 {
 		return PassedWithMetrics(metrics), nil
 	}
-	return Flagged("TOO_MANY_NEGATIVES", metrics), nil
+	return FlaggedWith(metrics, Reason{
+		Code:      "EXCESS_WRONG_PLANTINGS",
+		Variables: map[string]any{"wrong_planting_number": negCount},
+	}), nil
 }
