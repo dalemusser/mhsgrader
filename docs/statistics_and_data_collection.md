@@ -1,5 +1,36 @@
 # Statistics and Data Collection
 
+> **Updated 2026-09-20 (September 2026 grading sync).** The grader now implements
+> the September 2026 specification in `mhsgrading/grading-logic`. Where the
+> per-rule sections below disagree with that specification, the specification
+> and the Go rule win; the sections are kept as background on the metric
+> families. What changed:
+>
+> - **Grade shape:** flagged grades carry `reasons: [{code, variables}]` — the
+>   spec's reason codes with the Instructor Message variables (placeholder names
+>   verbatim, e.g. `attempt_number`, `wrong_box_summary`) — plus `reasonCode`
+>   (the first code) for older readers. `metrics` keeps the raw counts; every rule
+>   stores `mistakeCount`.
+> - **Vocabulary:** `SOLVED_WITH_ASSIST`, `EXCESS_ATTEMPTS`, `EXCESS_NAV_REMINDERS`,
+>   `EXCESS_MISCLASSIFICATIONS`, `WRONG_EVIDENCE_SELECTED`, `EXCESS_WRONG_RIVERS`,
+>   `EXCESS_SENSOR_REMINDERS`, `EXCESS_WRONG_PLANTINGS`, `SCORE_BELOW_THRESHOLD`,
+>   `WRONG_SOIL_SELECTED`, `WRONG_SETTINGS_SELECTED`, `WRONG_ARG_SELECTED` (U1P3).
+>   Retired: `MISSING_SUCCESS_NODE`, `TOO_MANY_NEGATIVES`, `BAD_FEEDBACK`,
+>   `HIT_YELLOW_NODE`, `NO_TRIGGER`. The dashboard's text for each (point, code)
+>   is generated from the spec by `cmd/mhsreasoncodes`.
+> - **Windows:** each rule uses the window its production script uses (previous
+>   end trigger → end, or latest start before end; U2P2/U2P3 also fence by client
+>   timestamp). Start keys still drive the `active` state and the durations.
+> - **Anchors that are not eventKeys:** U4P1 ends and U4P2 starts on the Unit 4
+>   `Soil Key Puzzle` "Finished" event (eventType + data match).
+> - **Corrected anchors:** U3P2 starts on `questActiveEvent:17`, U3P4 on
+>   `questActiveEvent:18`; U4P1's old `questActiveEvent:39` trigger is gone.
+> - The `log_entries`/`playerId` names below are historical: the collection is
+>   `logdata` and the player field is `user_id`.
+>
+> Full record: `docs/grading-sync-plan-092026.md`; open questions for the grading
+> team: `docs/grading-team-questions-092026.md`.
+
 This document describes the data the mhsgrader collects, how it collects it, and why. It covers the full pipeline from raw game telemetry through grading rules to the stored grade records used by the StrataHub dashboard.
 
 ---

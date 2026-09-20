@@ -171,6 +171,7 @@ func replayFixture(ctx context.Context, t *testing.T, client *mongo.Client, dir,
 		cMark := "ok"
 		if notReached {
 			cMark = "ok (not reached)"
+			colorOK++
 		} else if gotColor != wantColor {
 			cMark = "MISMATCH"
 			t.Errorf("%s: color expected %s, got %s (attempts=%d)", pid, wantColor, gotColor, len(items))

@@ -6,7 +6,7 @@ MHSGrader is a standalone background grading service that continuously evaluates
 
 ## Technology Stack
 
-- **Language:** Go 1.24.1
+- **Language:** Go 1.25
 - **Framework:** Waffle (custom Go web framework)
 - **Database:** MongoDB / AWS DocumentDB (shared cluster with stratahub and stratalog)
 - **Logging:** Zap (structured logging)
@@ -18,7 +18,8 @@ MHSGrader is a standalone background grading service that continuously evaluates
 ```
 mhsgrader/
 ├── cmd/mhsgrader/
-│   └── main.go              # Entry point; handles reset flag and engine startup
+│   └── main.go              # Entry point; --reset, --once, engine startup
+├── cmd/mhsreasoncodes/      # Writes mhs_reason_codes.json for StrataHub from the spec
 ├── internal/app/
 │   ├── bootstrap/           # Configuration, DB connection, schema setup
 │   │   ├── config.go
@@ -32,12 +33,13 @@ mhsgrader/
 │   │   ├── engine.go        # Coordinates scanning and evaluation loop
 │   │   ├── scanner.go       # Scans stratalog for trigger events
 │   │   └── evaluator.go     # Dispatches rules and stores grades
-│   ├── rules/               # Grading rules (23 total: U1P1–U5P4)
+│   ├── rules/               # Grading rules (26: U1P1–U5P4), one file per point
 │   │   ├── rule.go          # Rule interface and Result types
 │   │   ├── registry.go      # eventKey → Rule mapping + unit start tracking
-│   │   ├── u1p1.go–u5p4.go  # Individual rule implementations
-│   │   ├── base.go          # BaseRule struct for DRY rule building
-│   │   └── logdatahelper.go # Shared helper for querying stratalog events
+│   │   ├── u1p1.go–u5p4.go  # Individual rule implementations (see docs/rule-authoring.md)
+│   │   └── helpers.go       # LogDataHelper: windowed queries by eventKey / eventType+data
+│   ├── fixtures/            # Loads the mhsgrading playthrough fixtures for the replay tests
+│   ├── reasoncodes/         # Extracts instructor-message templates from the spec (cmd/mhsreasoncodes)
 │   └── store/               # Data access layer
 │       ├── graderstate/     # Cursor persistence (resumable scanning)
 │       ├── progressgrades/  # Grade storage and retrieval
@@ -94,11 +96,14 @@ func NewU2P3Rule() *U2P3Rule {
 
 ### Result Types
 - `Passed()` / `PassedWithMetrics(map)` — Green (competency demonstrated)
-- `Flagged(reasonCode, metrics)` — Yellow (needs improvement, with reason like `"TOO_MANY_TARGETS"`)
+- `FlaggedWith(metrics, Reason{Code, Variables}...)` — Yellow with the spec's reason code(s) and the
+  Instructor Message variables (e.g. `SOLVED_WITH_ASSIST` with `attempt_number`); `Flagged(code, metrics)` is the legacy single-code form
 
 ### Organization Principles
 - **Stateless evaluation:** Rules query the log window, don't mutate state
-- **Window-based analysis:** `EvalContext` provides `(startEventID, endEventID]` window for queries
+- **Window-based analysis:** each rule declares the window its production script uses (`WindowPrevTrigger` = previous occurrence of the end trigger → this one; default = latest start anchor before the end; optional client-timestamp fence); `EvalContext.Window` is that interval. A re-fired end trigger with no new start is ignored.
+- **Non-key anchors:** `EventMatch` (eventType + data fields, e.g. the Unit 4 soil-key puzzle close) can be a start or end anchor; the scanner and evaluator match them alongside eventKeys
+- **Reason codes and variables** follow `mhsgrading/grading-logic` verbatim; `docs/grading-sync-plan-092026.md` records the September 2026 sync and `docs/grading-team-questions-092026.md` the open questions
 - **Registry pattern:** `DefaultRegistry()` maps event keys to rules for fast dispatch
 - **Unit start tracking:** Registry also tracks unit-level events (e.g., `questActiveEvent:28` for Unit 1)
 
@@ -202,17 +207,25 @@ Single document tracking scan cursor:
 ```
 
 ### stratalog.logdata (read-only source)
-Events with eventKey for triggering evaluations:
+Events with eventKey for triggering evaluations (`user_id` is the 24-hex StrataHub user id;
+`timestamp` is the client clock as a string, `serverTimestamp` is authoritative):
 ```js
 {
   _id: ObjectId("..."),
   game: "mhs",
-  user_id: "student@mhs.mhs",
+  user_id: "665f1a2b3c4d5e6f7a8b9c0d",
+  eventType: "DialogueNodeEvent",
   eventKey: "DialogueNodeEvent:20:33",
+  timestamp: "2026-09-16T01:24:30.2420000Z",
   serverTimestamp: ISODate(...),
   data: { ... }
 }
 ```
+
+### Testing
+`go test ./internal/app/grader/ -run TestFixtureReplay -v` replays the five mhsgrading playthrough
+fixtures (needs a local MongoDB and the sibling `mhsgrading` checkout or `MHSGRADING_DIR`) and checks
+colours, reason codes and message variables for all 26 points; run it after every rule change.
 
 ## Related Repos
 
