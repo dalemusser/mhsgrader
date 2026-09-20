@@ -6,21 +6,38 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-// U2P3Rule — Getting the Band Back Together Part II: Count wrong-direction prompts.
-// Uses start/end windowing with DialogueNodeEvent:20:33 as activity start.
-// Green if count <= 6; Flagged if > 6.
+// U2P3Rule — Getting the Band Back Together Part II: fewer than six adaptive
+// navigation reminders across the searches for Tera and Aryn.
+//
+// Spec: mhsgrading/grading-logic/mhs-unit2-point3-grading.md (2026-09).
+// Window: latest DialogueNodeEvent:20:33 before the trigger → DialogueNodeEvent:22:18
+// (the script's START_KEY; the doc header's Trigger(Start) 20:26 is not used).
+// The colour script fences by _id and by client timestamp and is yellow when
+// the start anchor or either timestamp is missing; the reason script uses the
+// same window by _id only and guards only on the start anchor.
+// Green iff the fenced reminder count < 6.
+// Reason EXCESS_NAV_REMINDERS: _id-window count >= 6; triggering_number = that
+// count, tera_count = reminders from the start to the first 21:1 (Tera's
+// greeting; the window end when absent), aryn_count = reminders from the
+// first 18:231 (Aryn waypoint prompt) to the end (0 when absent).
 type U2P3Rule struct{ BaseRule }
 
 func NewU2P3Rule() *U2P3Rule {
-	return &U2P3Rule{NewBaseRule(2, 3, "v2",
+	return &U2P3Rule{NewBaseRule(2, 3, "v3",
 		[]string{"DialogueNodeEvent:20:33"},
 		[]string{"DialogueNodeEvent:22:18"},
+		WithTimestampFence(),
 	)}
 }
 
 func (r *U2P3Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userID string, ec EvalContext) (Result, error) {
 	helper := NewLogDataHelper(db, game)
-	window := ec.Window
+	w := ec.Window
+
+	const (
+		teraFoundKey = "DialogueNodeEvent:21:1"   // Tera's greeting: the Tera search is over
+		arynStartKey = "DialogueNodeEvent:18:231" // Aryn waypoint prompt: the Aryn search begins
+	)
 
 	targetKeys := []string{
 		"DialogueNodeEvent:18:225", "DialogueNodeEvent:28:185", "DialogueNodeEvent:59:185",
@@ -35,13 +52,70 @@ func (r *U2P3Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userI
 		"DialogueNodeEvent:18:236", "DialogueNodeEvent:18:237", "DialogueNodeEvent:28:190", "DialogueNodeEvent:59:190",
 	}
 
-	count, err := helper.CountEventsInWindow(ctx, userID, targetKeys, window)
+	// Colour: the timestamp-fenced count.
+	fencedCount, err := helper.CountEventsInWindow(ctx, userID, targetKeys, w)
 	if err != nil {
 		return Result{}, err
 	}
 
-	if count <= 6 {
-		return PassedWithMetrics(map[string]any{"mistakeCount": count}), nil
+	// Reason: the same window by _id only, split into the two searches. The
+	// phase markers are not target keys, so the exclusive lower bound of Sub
+	// is count-neutral.
+	idWindow := w.Sub(w.StartID, w.EndID)
+	total, err := helper.CountEventsInWindow(ctx, userID, targetKeys, idWindow)
+	if err != nil {
+		return Result{}, err
 	}
-	return Flagged("BAD_FEEDBACK", map[string]any{"mistakeCount": count}), nil
+	teraEnd, err := helper.EarliestEventInWindow(ctx, userID, []string{teraFoundKey}, idWindow)
+	if err != nil {
+		return Result{}, err
+	}
+	arynStart, err := helper.EarliestEventInWindow(ctx, userID, []string{arynStartKey}, idWindow)
+	if err != nil {
+		return Result{}, err
+	}
+	teraEndID := w.EndID
+	if teraEnd != nil {
+		teraEndID = teraEnd.ID
+	}
+	teraCount, err := helper.CountEventsInWindow(ctx, userID, targetKeys, w.Sub(w.StartID, teraEndID))
+	if err != nil {
+		return Result{}, err
+	}
+	var arynCount int64
+	if arynStart != nil {
+		arynCount, err = helper.CountEventsInWindow(ctx, userID, targetKeys, w.Sub(arynStart.ID, w.EndID))
+		if err != nil {
+			return Result{}, err
+		}
+	}
+
+	metrics := map[string]any{
+		"mistakeCount": fencedCount,
+		"totalCount":   total,
+		"teraCount":    teraCount,
+		"arynCount":    arynCount,
+	}
+
+	hasStart := !ec.StartEventID.IsZero()
+	windowValid := hasStart && w.TSStart != nil && w.TSEnd != nil
+	if !windowValid {
+		metrics["windowInvalid"] = "start anchor or client timestamp missing; yellow by rule"
+	}
+	if windowValid && fencedCount < 6 {
+		return PassedWithMetrics(metrics), nil
+	}
+
+	var reasons []Reason
+	if hasStart && total >= 6 {
+		reasons = append(reasons, Reason{
+			Code: "EXCESS_NAV_REMINDERS",
+			Variables: map[string]any{
+				"triggering_number": total,
+				"tera_count":        teraCount,
+				"aryn_count":        arynCount,
+			},
+		})
+	}
+	return FlaggedWith(metrics, reasons...), nil
 }
