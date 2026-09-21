@@ -14,7 +14,7 @@ transcriptions against `internal/app/rules/*.go`.*
   (Phase B1–B3) committed in stratahub. Dale's answers to §7: windows per script (Q1),
   wipe + regrade approved (Q2), scripts as validated (Q3), U3P2 start decided by us
   (Q4, `questActiveEvent:17`), AI pop-up later (Q5), EA scores out (Q6), doc
-  inconsistencies listed for the grading team (Q7) → `docs/grading-team-questions-092026.md`.
+  inconsistencies listed for the grading team (Q7) → the shared repo: `mhsgrading/docs/grading-team-questions-2026-09.md`; corrections already made: `mhsgrading/docs/grading-doc-changes-2026-09-21.md`.
 - **2026-09-20 23:27 UTC:** production grades wiped (664 documents) and the v3 grader
   deployed; stratahub deployed 23:27 UTC. The replay stalled at 2026-08-17 on two log
   records whose `data` is a string (see the questions doc §F); tolerant decoding was
