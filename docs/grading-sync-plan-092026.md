@@ -19,8 +19,13 @@ transcriptions against `internal/app/rules/*.go`.*
   deployed; stratahub deployed 23:27 UTC. The replay stalled at 2026-08-17 on two log
   records whose `data` is a string (see the questions doc §F); tolerant decoding was
   deployed 00:10 UTC and the replay resumed from the same cursor (no second wipe).
-- Next: confirm the cursor reaches the newest log and spot-check the dashboard; later:
-  per-point AI pop-up (B4), teacher-guide note (B5), EA scores.
+- **2026-09-21 00:13 UTC:** regrade complete (cursor at the last trigger event of
+  2026-09-18, zero errors after the fix). 745 students graded; latest grades: 7,123
+  passed, 2,517 flagged (2,390 with reasons; the 127 without are the spec's no-code
+  states, almost all on spring-2026 builds), 1,428 active (312 of them after a finished
+  attempt, shown as the finished grade). Replay of 2.65 M logs took ~15 min.
+- Next: Dale eyeballs the review pop-up on the live dashboard; later: per-point AI
+  pop-up (B4), teacher-guide note (B5), EA scores, grading-team answers.
 
 ## 1. Where things stand
 
