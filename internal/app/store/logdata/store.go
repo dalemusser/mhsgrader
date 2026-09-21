@@ -4,6 +4,7 @@ package logdata
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"time"
@@ -26,7 +27,50 @@ type LogEntry struct {
 	EventKey        string             `bson:"eventKey,omitempty"`  // For grading triggers
 	Timestamp       bson.RawValue      `bson:"timestamp,omitempty"` // Client timestamp exactly as stored (a string on current builds)
 	ServerTimestamp time.Time          `bson:"serverTimestamp"`
-	Data            map[string]any     `bson:"data,omitempty"`
+	Data            map[string]any     `bson:"-"` // event payload; see UnmarshalBSON
+}
+
+// logEntryWire is LogEntry as stored, with the payload left undecoded.
+type logEntryWire struct {
+	ID              primitive.ObjectID `bson:"_id"`
+	Game            string             `bson:"game"`
+	UserID          string             `bson:"user_id,omitempty"`
+	EventType       string             `bson:"eventType,omitempty"`
+	EventKey        string             `bson:"eventKey,omitempty"`
+	Timestamp       bson.RawValue      `bson:"timestamp,omitempty"`
+	ServerTimestamp time.Time          `bson:"serverTimestamp"`
+	Data            bson.RawValue      `bson:"data,omitempty"`
+}
+
+// UnmarshalBSON decodes an entry tolerantly. The game has logged `data` as a
+// JSON string on some builds instead of an object; a string payload is parsed
+// as JSON when it is one and otherwise kept under "_raw", so one odd record
+// can never stop a batch from decoding.
+func (e *LogEntry) UnmarshalBSON(b []byte) error {
+	var w logEntryWire
+	if err := bson.Unmarshal(b, &w); err != nil {
+		return err
+	}
+	*e = LogEntry{
+		ID: w.ID, Game: w.Game, UserID: w.UserID, EventType: w.EventType, EventKey: w.EventKey,
+		Timestamp: w.Timestamp, ServerTimestamp: w.ServerTimestamp,
+	}
+	switch w.Data.Type {
+	case bsontype.EmbeddedDocument:
+		var m map[string]any
+		if err := w.Data.Unmarshal(&m); err == nil {
+			e.Data = m
+		}
+	case bsontype.String:
+		s := w.Data.StringValue()
+		var m map[string]any
+		if err := json.Unmarshal([]byte(s), &m); err == nil {
+			e.Data = m
+		} else if s != "" {
+			e.Data = map[string]any{"_raw": s}
+		}
+	}
+	return nil
 }
 
 // HasTimestamp reports whether the entry carries a client timestamp.
@@ -168,7 +212,41 @@ func (s *Store) ScanTriggers(ctx context.Context, game string, triggerKeys []str
 		filter["_id"] = bson.M{"$gt": afterID}
 	}
 	opts := options.Find().SetSort(bson.D{{Key: "_id", Value: 1}}).SetLimit(int64(limit))
-	return s.find(ctx, filter, opts)
+	cur, err := s.coll.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, err
+	}
+	defer cur.Close(ctx)
+	var entries []LogEntry
+	for cur.Next(ctx) {
+		var e LogEntry
+		if err := cur.Decode(&e); err != nil {
+			// Keep the record in the batch with what can be read raw, so the
+			// cursor still moves past it; nothing dispatches on it if the key
+			// fields are unreadable.
+			e = LogEntry{}
+			if id, ok := cur.Current.Lookup("_id").ObjectIDOK(); ok {
+				e.ID = id
+			}
+			if v, ok := cur.Current.Lookup("user_id").StringValueOK(); ok {
+				e.UserID = v
+			}
+			if v, ok := cur.Current.Lookup("eventKey").StringValueOK(); ok {
+				e.EventKey = v
+			}
+			if v, ok := cur.Current.Lookup("eventType").StringValueOK(); ok {
+				e.EventType = v
+			}
+			if t, ok := cur.Current.Lookup("serverTimestamp").TimeOK(); ok {
+				e.ServerTimestamp = t
+			}
+			if e.ID.IsZero() {
+				continue
+			}
+		}
+		entries = append(entries, e)
+	}
+	return entries, cur.Err()
 }
 
 // LatestBefore returns the most recent entry (by _id) matching any of the
