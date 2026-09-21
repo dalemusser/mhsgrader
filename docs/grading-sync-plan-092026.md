@@ -15,8 +15,12 @@ transcriptions against `internal/app/rules/*.go`.*
   wipe + regrade approved (Q2), scripts as validated (Q3), U3P2 start decided by us
   (Q4, `questActiveEvent:17`), AI pop-up later (Q5), EA scores out (Q6), doc
   inconsistencies listed for the grading team (Q7) → `docs/grading-team-questions-092026.md`.
-- Next: production deploy + regrade (A6), stratahub deploy, spot-check the dashboard;
-  later: per-point AI pop-up (B4), teacher-guide note (B5), EA scores.
+- **2026-09-20 23:27 UTC:** production grades wiped (664 documents) and the v3 grader
+  deployed; stratahub deployed 23:27 UTC. The replay stalled at 2026-08-17 on two log
+  records whose `data` is a string (see the questions doc §F); tolerant decoding was
+  deployed 00:10 UTC and the replay resumed from the same cursor (no second wipe).
+- Next: confirm the cursor reaches the newest log and spot-check the dashboard; later:
+  per-point AI pop-up (B4), teacher-guide note (B5), EA scores.
 
 ## 1. Where things stand
 

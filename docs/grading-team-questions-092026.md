@@ -170,3 +170,14 @@ dashboard; changes you request will be applied in a follow-up release.*
   (and the grader) let the assist win. The game team should confirm whether `68:29`
   is meant to fire on the assisted path.
 
+## F. For the game/dev team: log records with a string `data` payload
+
+Two `DialogueEvent` records from build `20260819-12226` (eventKey
+`DialogueNodeEvent:10:1`, 2026-08-24, on the dev sentinel account) carry
+`data: "System.Collections.Generic.Dictionary`2[System.String,System.Object]"` —
+the dictionary's `ToString()` instead of its contents. 1,188 `PlayerPositionEvent`
+records from build `20260323-` (2026-08-25) also have string payloads. The grader
+now tolerates these (a JSON string is parsed, anything else is kept as `_raw`),
+but any grading key inside such a payload is lost for that record. Worth a check
+in the logger's serialization path.
+
