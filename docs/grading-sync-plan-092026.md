@@ -24,8 +24,44 @@ transcriptions against `internal/app/rules/*.go`.*
   passed, 2,517 flagged (2,390 with reasons; the 127 without are the spec's no-code
   states, almost all on spring-2026 builds), 1,428 active (312 of them after a finished
   attempt, shown as the finished grade). Replay of 2.65 M logs took ~15 min.
-- Next: Dale eyeballs the review pop-up on the live dashboard; later: per-point AI
-  pop-up (B4), teacher-guide note (B5), EA scores, grading-team answers.
+- **2026-09-21:** Dale confirmed the review pop-up on the live dashboard (screenshots
+  of U2P2 and U4P2). Instructor messages reworded without em-dashes (mhsgrading +
+  catalog regenerated + stratahub redeployed). Documentation inconsistencies with a
+  clear answer fixed in mhsgrading and recorded in
+  `mhsgrading/docs/grading-doc-changes-2026-09-21.md`; both Python suites and the Go
+  harness still 26/26. Dale shares that file and
+  `mhsgrading/docs/grading-team-questions-2026-09.md` with Wenyi.
+
+### How to resume
+
+Everything shipped is in production; the cycle is paused, not mid-task. Open items,
+in likely order:
+
+1. **Grading-team answers** to `mhsgrading/docs/grading-team-questions-2026-09.md`.
+   Any change to a script → edit the markdown, its Python transcription and the Go
+   rule together (`mhsgrading/ai/context.md` "Keeping the three copies in sync"),
+   run both Python suites and `go test ./internal/app/grader/ -run TestFixtureReplay`,
+   bump the rule to `_v4`, deploy with `mhsgrader_update/aws_update.sh`; a colour
+   change on already-graded students needs `aws_reset.sh` + redeploy (15-minute
+   replay, dashboard cells refill as it runs). A wording-only change → regenerate the
+   catalog (`go run ./cmd/mhsreasoncodes -o ../stratahub/internal/app/resources/mhs_reason_codes.json`)
+   and deploy stratahub only.
+2. **B4 — per-point AI summary button** inside the pop-up (Dale: later). Inputs per
+   point are listed in the mhsgrading README ("Generating teacher feedback"); the
+   existing whole-student summary path is `mhsdashboard/summary.go`.
+3. **B5 — teacher guide** note on the Progress-view pop-up (the guide only covers the
+   Devices view); sources under `stratahub/docs/mission-hydrosci-teacher-guide/`.
+4. **Debug timeline key annotations** (`stratahub/internal/app/resources/mhs_grading_rules.json`)
+   were hand-updated for the changed points; the evaluated-key lists for the other
+   points still reflect March. Generating that file from the Go rules would keep it
+   honest.
+5. **EA checkpoint scores** (`docs/updates/ea-scores.md`), out of scope for this
+   cycle; the v3 metrics keep the raw counts it needs.
+6. Watch for the **spec states without a reason code** (questions doc A9) and the
+   **string-payload log records** (questions doc F) in the grading team's replies.
+
+Local verification needs a running MongoDB (`mongod` via Homebrew) and the sibling
+`mhsgrading` checkout; the Python suites need `pyyaml` (a venv is fine).
 
 ## 1. Where things stand
 
