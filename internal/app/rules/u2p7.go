@@ -19,6 +19,8 @@ import (
 // flow-rate evidence), both_wrong_number (claim I with irrelevant evidence),
 // irrelevant_evidence_number (claim II with irrelevant evidence, or several
 // pieces of evidence at once).
+// EA U2.C7 (max 3): attempts = wrong submissions + 1 when the argument
+// succeeded — within 3 → 3, 4 → 2, 5 → 1, more or never succeeded → 0.
 type U2P7Rule struct{ BaseRule }
 
 func NewU2P7Rule() *U2P7Rule {
@@ -83,8 +85,9 @@ func (r *U2P7Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userI
 		"bothWrongCount":          bothCount,
 		"irrelevantEvidenceCount": evidenceCount,
 	}
+	ea := eaOne(EAU2C7, EAAttemptsBand3(negCount+1, hasSuccess), 3)
 	if hasSuccess && negCount <= 3 {
-		return PassedWithMetrics(metrics), nil
+		return PassedWithMetrics(metrics).WithEA(ea), nil
 	}
 
 	attemptNumber := negCount
@@ -99,5 +102,5 @@ func (r *U2P7Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userI
 			"both_wrong_number":          bothCount,
 			"irrelevant_evidence_number": evidenceCount,
 		},
-	}), nil
+	}).WithEA(ea), nil
 }

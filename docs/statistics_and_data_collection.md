@@ -138,6 +138,43 @@ Every grade record stores the following fields:
 | `endTime` | time | When the student completed the activity (from the end/trigger event's `serverTimestamp`) |
 | `durationSecs` | float64 | Wall-clock duration from start to end in seconds |
 | `activeDurationSecs` | float64 | Active duration excluding idle gaps longer than the configured threshold |
+| `eaScores` | map | Embedded Assessment checkpoint scores this attempt yields, `"U2.C2" → {score, max}` (finished attempts of the nine ceremony checkpoints; see "EA checkpoint scores" below) |
+
+The user document also carries `eaStars` (`"unit2" → 1–3`), the per-unit star
+for the end-of-game ceremony, present once every point of the unit has a
+finished attempt.
+
+### EA checkpoint scores
+
+The end-of-game ceremony (`mhs-gameplay-end`) chooses between two versions of
+eight lines using Embedded Assessment checkpoint scores, and shows a star per
+unit. The rules compute the scores alongside the colour (`internal/app/rules/ea.go`;
+decisions in `mhsgrading/docs/ea-scores-team-questions-2026-09.md`, brief in
+`docs/updates/ea-scores.md`):
+
+| Checkpoint | Rule | Max | Derivation |
+|---|---|---|---|
+| `U2.C2` | u2p2 | 1 | help dialogs (the EA document's nine nodes) in the attempt: ≤ 1 → 1, 2 → ½, more → 0 |
+| `U2.C3` | u2p3 | 3 | Tera search + Aryn search, each by its own help-dialog set: ≤ 1 → 1½, 2–3 → 1, 4 → ½, more → 0 |
+| `U2.C5` | u2p5 | 6 | the rule's score (+1 correct, −⅓ incorrect), floored at 0 |
+| `U2.C7` | u2p7 | 3 | attempts = wrong + 1 when succeeded: ≤ 3 → 3, 4 → 2, 5 → 1, else 0 |
+| `U3.C1` | u3p1 | 3 | correct crate placements, at most 3 |
+| `U3.C5` | u3p5 | 4 | the rule's score (correct − ½ wrong), floored at 0 |
+| `U4.C6` | u4p6 | 3 | boxes with the right soil (the final score) |
+| `U5.C3` | u5p3 | 3 | attempts = wrong + 1: ≤ 3 → 3, 4 → 2, 5 → 1, else 0 |
+| `U5.C4` | u5p4 | 1.5 | the first outcome node's settings: ½ each for Tilted Out, Uncovered, Cold |
+
+A rule emits a checkpoint only from a well-bounded attempt (a start anchor
+exists for the start-anchored windows); an absent checkpoint means unknown
+to the ceremony, never 0. Stars (`eaStars`, interim rule until the team
+confirms the per-unit totals): the unit's total over the implemented
+checkpoints as a share of their maximum — ≥ 83 % three stars, ≥ 57 % two,
+otherwise one — recomputed after every finished grade in the unit and present
+only while every point of the unit has a finished attempt.
+
+Existing grades get EA scores by a wipe and replay (`aws_reset.sh` + deploy,
+about 15 minutes); the colour rules are unchanged, so colours come back
+identical.
 
 ### Duration Calculations
 

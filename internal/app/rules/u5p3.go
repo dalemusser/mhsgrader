@@ -16,6 +16,9 @@ import (
 // count is ≥ 4; no success node is required.
 // Reason EXCESS_ATTEMPTS: wrong_argument_number = total, split into
 // claim_wrong_number / reasoning_wrong_number / evidence_wrong_number.
+// EA U5.C3 (max 3): attempts = wrong submissions + 1 (the trigger,
+// questFinishEvent:44, is the argument's completion) — within 3 → 3, 4 → 2,
+// 5 → 1, more → 0; only when the window has a start anchor.
 type U5P3Rule struct{ BaseRule }
 
 func NewU5P3Rule() *U5P3Rule {
@@ -84,8 +87,12 @@ func (r *U5P3Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userI
 		"reasoningWrong": reasoningWrong,
 		"evidenceWrong":  evidenceWrong,
 	}
+	var ea map[string]EAScore
+	if !ec.StartEventID.IsZero() {
+		ea = eaOne(EAU5C3, EAAttemptsBand3(negCount+1, true), 3)
+	}
 	if negCount < 4 {
-		return PassedWithMetrics(metrics), nil
+		return PassedWithMetrics(metrics).WithEA(ea), nil
 	}
 	return FlaggedWith(metrics, Reason{
 		Code: "EXCESS_ATTEMPTS",
@@ -95,5 +102,5 @@ func (r *U5P3Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userI
 			"reasoning_wrong_number": reasoningWrong,
 			"evidence_wrong_number":  evidenceWrong,
 		},
-	}), nil
+	}).WithEA(ea), nil
 }

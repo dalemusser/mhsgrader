@@ -14,6 +14,7 @@ import (
 // Green iff more than one correct-river confirmation (10:30) in the window.
 // Reason EXCESS_WRONG_RIVERS: wrong_river_number = wrong-river feedback nodes
 // (10:31 mid-task, 10:32 last crate) counted directly in the window.
+// EA U3.C1 (max 3): one point per correct crate placement (10:30), at most 3.
 type U3P1Rule struct{ BaseRule }
 
 func NewU3P1Rule() *U3P1Rule {
@@ -48,11 +49,12 @@ func (r *U3P1Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userI
 		"correctCount":       correctCount,
 		"wrong_river_number": wrongCount,
 	}
+	ea := eaOne(EAU3C1, float64(min(correctCount, 3)), 3)
 	if correctCount > 1 {
-		return PassedWithMetrics(metrics), nil
+		return PassedWithMetrics(metrics).WithEA(ea), nil
 	}
 	return FlaggedWith(metrics, Reason{
 		Code:      "EXCESS_WRONG_RIVERS",
 		Variables: map[string]any{"wrong_river_number": wrongCount},
-	}), nil
+	}).WithEA(ea), nil
 }

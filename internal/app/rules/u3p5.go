@@ -15,6 +15,8 @@ import (
 // script; the rule table's ≥ 3 is flagged for reconciliation in the doc).
 // Reason EXCESS_WRONG_PLANTINGS: wrong_planting_number = wrong-spot feedback
 // count (73:164 first wrong, 73:168 intermediate, 73:171 fourth wrong).
+// EA U3.C5 (max 4): the same score, floored at 0 (the EA document's own
+// formula: correct − ½ × incorrect).
 type U3P5Rule struct{ BaseRule }
 
 func NewU3P5Rule() *U3P5Rule {
@@ -54,11 +56,12 @@ func (r *U3P5Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userI
 		"score":                 score,
 		"wrong_planting_number": negCount,
 	}
+	ea := eaOne(EAU3C5, max(score, 0), 4)
 	if score >= 2.5 {
-		return PassedWithMetrics(metrics), nil
+		return PassedWithMetrics(metrics).WithEA(ea), nil
 	}
 	return FlaggedWith(metrics, Reason{
 		Code:      "EXCESS_WRONG_PLANTINGS",
 		Variables: map[string]any{"wrong_planting_number": negCount},
-	}), nil
+	}).WithEA(ea), nil
 }

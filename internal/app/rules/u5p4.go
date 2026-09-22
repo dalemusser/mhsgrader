@@ -18,6 +18,9 @@ import (
 // outcome fired (zero tolerance).
 // Reason WRONG_SETTINGS_SELECTED: wrong_run_number = failed runs;
 // failure_phrase names the observed failure mode(s).
+// EA U5.C4 (max 1½, team decision D6): ½ each for Tilted Out, Uncovered and
+// Cold, read from the settings the FIRST outcome node of the attempt names
+// (EASolarStillOutcomes); only when the window has a start anchor.
 type U5P4Rule struct{ BaseRule }
 
 func NewU5P4Rule() *U5P4Rule {
@@ -71,8 +74,27 @@ func (r *U5P4Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userI
 		"glassCount":    glassCount,
 		"roofCount":     roofCount,
 	}
+
+	// EA: the first submission's settings.
+	var ea map[string]EAScore
+	if !ec.StartEventID.IsZero() {
+		first, err := helper.EarliestEventInWindow(ctx, userID, EASolarStillKeys(), w)
+		if err != nil {
+			return Result{}, err
+		}
+		if first != nil {
+			if o, known := EASolarStillOutcomes[first.EventKey]; known {
+				metrics["eaFirstOutcome"] = first.EventKey
+				metrics["eaFirstRoof"] = o.Roof
+				metrics["eaFirstUncovered"] = o.Uncovered
+				metrics["eaFirstCold"] = o.Cold
+				ea = eaOne(EAU5C4, o.Score(), 1.5)
+			}
+		}
+	}
+
 	if hasSuccess && negCount == 0 {
-		return PassedWithMetrics(metrics), nil
+		return PassedWithMetrics(metrics).WithEA(ea), nil
 	}
 
 	// Mirror the script's failure_phrase word for word.
@@ -103,5 +125,5 @@ func (r *U5P4Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userI
 			"wrong_run_number": negCount,
 			"failure_phrase":   failurePhrase,
 		},
-	}), nil
+	}).WithEA(ea), nil
 }

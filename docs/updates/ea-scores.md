@@ -203,6 +203,16 @@ EA scores organically, but historical grades need a one-time reprocess:
 - Grade doc shape: `mhsgrader/internal/app/store/progressgrades/store.go`
 - Existing reader to mirror: `stratahub/internal/app/features/mhsdashboard/summary.go`
 
+## Status 2026-09-22 — G1 implemented
+
+The nine ceremony checkpoints are computed by their rules (`Result.EAScores`,
+stored as `Grade.eaScores` per finished attempt) and the per-unit stars as
+`eaStars` on the user document (interim share-of-maximum rule), see
+`internal/app/rules/ea.go` and `docs/statistics_and_data_collection.md`
+"EA checkpoint scores". Backfill = wipe and replay (`aws_reset.sh` + deploy),
+not a separate command: the colour rules are unchanged. The remaining fourteen
+checkpoints (G2) extend `EACheckpoints` and their rules the same way.
+
 ## Addendum 2026-09-21 — decisions for the first playable ceremony
 
 The team-facing decisions and questions are in

@@ -19,19 +19,28 @@ type Reason struct {
 	Variables map[string]any `bson:"variables,omitempty"`
 }
 
+// EAScore is one Embedded Assessment checkpoint score on an attempt
+// (rules.EAScore stored). The ceremony endpoint in stratahub reads them
+// from the latest finished attempt per point.
+type EAScore struct {
+	Score float64 `bson:"score"`
+	Max   float64 `bson:"max"`
+}
+
 // Grade represents a single progress point grade.
 type Grade struct {
-	Attempt            int            `bson:"attempt"`                      // 1-based attempt number
-	Status             string         `bson:"status"`                       // "active", "passed", or "flagged"
-	ComputedAt         time.Time      `bson:"computedAt"`                   // When grade was computed
-	RuleID             string         `bson:"ruleId"`                       // e.g., "u1p1_v3"
-	ReasonCode         string         `bson:"reasonCode,omitempty"`         // First triggered code (kept for readers that predate Reasons)
-	Reasons            []Reason       `bson:"reasons,omitempty"`            // Every triggered reason code with its message variables
-	Metrics            map[string]any `bson:"metrics,omitempty"`            // Raw counts/scores behind the grade (analytics)
-	StartTime          *time.Time     `bson:"startTime,omitempty"`          // Activity start
-	EndTime            *time.Time     `bson:"endTime,omitempty"`            // Activity end
-	DurationSecs       *float64       `bson:"durationSecs,omitempty"`       // Wall-clock time to complete (seconds)
-	ActiveDurationSecs *float64       `bson:"activeDurationSecs,omitempty"` // Active time excluding gaps (seconds)
+	Attempt            int                `bson:"attempt"`                      // 1-based attempt number
+	Status             string             `bson:"status"`                       // "active", "passed", or "flagged"
+	ComputedAt         time.Time          `bson:"computedAt"`                   // When grade was computed
+	RuleID             string             `bson:"ruleId"`                       // e.g., "u1p1_v3"
+	ReasonCode         string             `bson:"reasonCode,omitempty"`         // First triggered code (kept for readers that predate Reasons)
+	Reasons            []Reason           `bson:"reasons,omitempty"`            // Every triggered reason code with its message variables
+	Metrics            map[string]any     `bson:"metrics,omitempty"`            // Raw counts/scores behind the grade (analytics)
+	StartTime          *time.Time         `bson:"startTime,omitempty"`          // Activity start
+	EndTime            *time.Time         `bson:"endTime,omitempty"`            // Activity end
+	DurationSecs       *float64           `bson:"durationSecs,omitempty"`       // Wall-clock time to complete (seconds)
+	ActiveDurationSecs *float64           `bson:"activeDurationSecs,omitempty"` // Active time excluding gaps (seconds)
+	EAScores           map[string]EAScore `bson:"eaScores,omitempty"`           // EA checkpoint scores, e.g. "U2.C2" -> {score, max} (finished attempts only)
 }
 
 // UserGrades represents all grades for a single user.
@@ -40,7 +49,20 @@ type UserGrades struct {
 	UserID      string             `bson:"user_id"`               // User identifier
 	Grades      map[string][]Grade `bson:"grades"`                // Map of point ID to array of attempt grades
 	CurrentUnit string             `bson:"currentUnit,omitempty"` // Unit the student is currently in
+	EAStars     map[string]int     `bson:"eaStars,omitempty"`     // Per-unit stars for the ceremony, "unit2" -> 0–3; present once every point of the unit is finished
 	LastUpdated time.Time          `bson:"lastUpdated"`           // When document was last modified
+}
+
+// LatestFinished returns the newest passed/flagged attempt for a point, or nil.
+func (pg *UserGrades) LatestFinished(pointID string) *Grade {
+	grades := pg.Grades[pointID]
+	for i := len(grades) - 1; i >= 0; i-- {
+		if st := grades[i].Status; st == "passed" || st == "flagged" {
+			g := grades[i]
+			return &g
+		}
+	}
+	return nil
 }
 
 // Store handles progress grades persistence.
@@ -174,6 +196,21 @@ func (s *Store) AppendActiveIfNeeded(ctx context.Context, game, userID, pointID,
 		LastUpdated: now,
 	}
 	_, err = s.coll.InsertOne(ctx, doc)
+	return err
+}
+
+// SetEAStar sets (stars != nil) or removes the star entry for a unit
+// ("unit2" …). lastUpdated is left alone: stars derive from grades that
+// already bumped it.
+func (s *Store) SetEAStar(ctx context.Context, game, userID, unitID string, stars *int) error {
+	filter := bson.M{"game": game, "user_id": userID}
+	var update bson.M
+	if stars != nil {
+		update = bson.M{"$set": bson.M{"eaStars." + unitID: *stars}}
+	} else {
+		update = bson.M{"$unset": bson.M{"eaStars." + unitID: ""}}
+	}
+	_, err := s.coll.UpdateOne(ctx, filter, update)
 	return err
 }
 

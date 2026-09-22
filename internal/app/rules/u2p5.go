@@ -15,6 +15,8 @@ import (
 // Reason EXCESS_MISCLASSIFICATIONS: score < 4; wrong_number = negatives,
 // claim_wrong / reasoning_wrong / evidence_wrong = negatives split by what
 // the misclassified passage actually was.
+// EA U2.C5 (max 6, team decision D2): the raw score as computed here
+// (+1 per correct placement, −⅓ per incorrect), floored at 0.
 type U2P5Rule struct{ BaseRule }
 
 func NewU2P5Rule() *U2P5Rule {
@@ -94,8 +96,9 @@ func (r *U2P5Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userI
 		"reasoningWrong": reasoningWrong,
 		"evidenceWrong":  evidenceWrong,
 	}
+	ea := eaOne(EAU2C5, max(score, 0), 6)
 	if score >= 4 {
-		return PassedWithMetrics(metrics), nil
+		return PassedWithMetrics(metrics).WithEA(ea), nil
 	}
 	return FlaggedWith(metrics, Reason{
 		Code: "EXCESS_MISCLASSIFICATIONS",
@@ -105,5 +108,5 @@ func (r *U2P5Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userI
 			"reasoning_wrong": reasoningWrong,
 			"evidence_wrong":  evidenceWrong,
 		},
-	}), nil
+	}).WithEA(ea), nil
 }

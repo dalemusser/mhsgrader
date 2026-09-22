@@ -116,13 +116,20 @@ go run ./cmd/mhsreasoncodes -o ../stratahub/internal/app/resources/mhs_reason_co
     "u2p1": [ { attempt: 1, status: "flagged", ruleId: "u2p1_v3",
                 reasonCode: "SOLVED_WITH_ASSIST",                       // first code (legacy readers)
                 reasons: [ { code: "SOLVED_WITH_ASSIST", variables: { attempt_number: 4 } } ],
-                metrics: { mistakeCount: 4, ... } } ]
+                metrics: { mistakeCount: 4, ... } } ],
+    "u2p2": [ { attempt: 1, status: "passed", ruleId: "u2p2_v3",
+                metrics: { mistakeCount: 0, eaHelpCount: 1 },
+                eaScores: { "U2.C2": { score: 1, max: 1 } } } ]        // EA checkpoint scores (the ceremony's inputs; rules/ea.go)
   },
+  eaStars: { unit2: 3 },                      // per-unit stars for the ceremony, once every point of the unit is finished
   lastUpdated: ISODate(...)
 }
 ```
 `status` is `active` (started), `passed` (green) or `flagged` (yellow). A flagged
 grade may carry no `reasons` when the spec defines no code for that state.
+`eaScores` appear on finished attempts of the nine ceremony checkpoints
+(`docs/statistics_and_data_collection.md` "EA checkpoint scores"); an absent
+checkpoint means unknown to the ceremony, never 0.
 
 ### mhsgrader.grader_state (cursor tracking)
 ```js

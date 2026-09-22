@@ -16,6 +16,9 @@ import (
 // yellow with no code (the reason script returns triggered: false there).
 // Green iff reminder count <= 1.
 // Reason EXCESS_NAV_REMINDERS: count > 1; triggering_number = count.
+// EA U2.C2 (Find Toppo, max 1): the EA document's nine help-dialog nodes in
+// the same window — once or less 1, twice ½, more 0 (ea.go); only when the
+// window has a start anchor.
 type U2P2Rule struct{ BaseRule }
 
 func NewU2P2Rule() *U2P2Rule {
@@ -46,15 +49,28 @@ func (r *U2P2Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userI
 
 	metrics := map[string]any{"mistakeCount": count}
 
+	// EA: the working document's help-dialog set (the colour keys plus the
+	// 18:99 / 18:223 / 18:224 prompts), counted by _id within the attempt.
+	var ea map[string]EAScore
+	if !ec.StartEventID.IsZero() {
+		eaKeys := append([]string{"DialogueNodeEvent:18:99", "DialogueNodeEvent:18:223", "DialogueNodeEvent:18:224"}, targetKeys...)
+		helpCount, err := helper.CountEventsInWindow(ctx, userID, eaKeys, w.Sub(w.StartID, w.EndID))
+		if err != nil {
+			return Result{}, err
+		}
+		metrics["eaHelpCount"] = helpCount
+		ea = eaOne(EAU2C2, EAHelpBand1(helpCount), 1)
+	}
+
 	if ec.StartEventID.IsZero() || w.TSStart == nil || w.TSEnd == nil {
 		metrics["windowInvalid"] = "start anchor or client timestamp missing; yellow by rule"
-		return FlaggedWith(metrics), nil
+		return FlaggedWith(metrics).WithEA(ea), nil
 	}
 	if count <= 1 {
-		return PassedWithMetrics(metrics), nil
+		return PassedWithMetrics(metrics).WithEA(ea), nil
 	}
 	return FlaggedWith(metrics, Reason{
 		Code:      "EXCESS_NAV_REMINDERS",
 		Variables: map[string]any{"triggering_number": count},
-	}), nil
+	}).WithEA(ea), nil
 }

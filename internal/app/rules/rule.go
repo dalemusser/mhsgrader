@@ -32,10 +32,19 @@ type Reason struct {
 
 // Result represents the outcome of a rule evaluation.
 type Result struct {
-	Status     string         // "passed" or "flagged"
-	ReasonCode string         // first triggered code (for flagged); mirrors Reasons[0].Code
-	Reasons    []Reason       // every triggered reason code, in the spec's order
-	Metrics    map[string]any // raw counts/scores behind the grade
+	Status     string             // "passed" or "flagged"
+	ReasonCode string             // first triggered code (for flagged); mirrors Reasons[0].Code
+	Reasons    []Reason           // every triggered reason code, in the spec's order
+	Metrics    map[string]any     // raw counts/scores behind the grade
+	EAScores   map[string]EAScore // EA checkpoint scores this attempt yields (ea.go); absent = unknown
+}
+
+// WithEA attaches EA checkpoint scores to a result (nil-safe).
+func (r Result) WithEA(scores map[string]EAScore) Result {
+	if len(scores) > 0 {
+		r.EAScores = scores
+	}
+	return r
 }
 
 // Passed returns a passed result (success).

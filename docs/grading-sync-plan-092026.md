@@ -55,8 +55,10 @@ in likely order:
    were hand-updated for the changed points; the evaluated-key lists for the other
    points still reflect March. Generating that file from the Go rules would keep it
    honest.
-5. **EA checkpoint scores** (`docs/updates/ea-scores.md`), out of scope for this
-   cycle; the v3 metrics keep the raw counts it needs.
+5. **EA checkpoint scores** (`docs/updates/ea-scores.md`): the nine ceremony
+   checkpoints and the interim stars shipped 2026-09-22 (G1); the other fourteen
+   checkpoints (G2) are next, driven by the team's answers in
+   `mhsgrading/docs/ea-scores-team-questions-2026-09.md`.
 6. Watch for the **spec states without a reason code** (questions doc A9) and the
    **string-payload log records** (questions doc F) in the grading team's replies.
 

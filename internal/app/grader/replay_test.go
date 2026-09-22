@@ -246,9 +246,30 @@ func replayFixture(ctx context.Context, t *testing.T, client *mongo.Client, dir,
 		if latest != nil && latest.ReasonCode != "" {
 			reason = latest.ReasonCode
 		}
-		rows = append(rows, fmt.Sprintf("%-5s color %-6s→%-7s %-8s codes %-8s %-26s attempts=%d", pid, wantColor, gotColor, cMark, codeMark, reason, len(items)))
+		// EA checkpoint scores of the latest finished attempt (the ceremony's
+		// inputs); a point that emits none prints nothing.
+		ea := ""
+		if fin := pg.LatestFinished(pid); fin != nil && len(fin.EAScores) > 0 {
+			ids := make([]string, 0, len(fin.EAScores))
+			for id := range fin.EAScores {
+				ids = append(ids, id)
+			}
+			sort.Strings(ids)
+			parts := make([]string, 0, len(ids))
+			for _, id := range ids {
+				sc := fin.EAScores[id]
+				parts = append(parts, fmt.Sprintf("%s=%g/%g", id, sc.Score, sc.Max))
+			}
+			ea = "ea " + strings.Join(parts, " ")
+		}
+		rows = append(rows, fmt.Sprintf("%-5s color %-6s→%-7s %-8s codes %-8s %-26s attempts=%d %s", pid, wantColor, gotColor, cMark, codeMark, reason, len(items), ea))
 	}
-	t.Logf("fixture %s: colors %d/%d, reason codes+variables %d/%d\n%s", id, colorOK, colorN, codeOK, codeN, strings.Join(rows, "\n"))
+	stars := make([]string, 0, len(pg.EAStars))
+	for u, n := range pg.EAStars {
+		stars = append(stars, fmt.Sprintf("%s=%d", u, n))
+	}
+	sort.Strings(stars)
+	t.Logf("fixture %s: colors %d/%d, reason codes+variables %d/%d, eaStars {%s}\n%s", id, colorOK, colorN, codeOK, codeN, strings.Join(stars, " "), strings.Join(rows, "\n"))
 }
 
 // valuesEqual compares a stored variable with an expected YAML value:

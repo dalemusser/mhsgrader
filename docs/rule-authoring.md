@@ -81,6 +81,12 @@ NewBaseRule(4, 1, "v3", []string{"DialogueNodeEvent:88:0"}, nil, WithTriggerMatc
 - `metrics` keeps the raw numbers for the analytics tab: always include
   `mistakeCount` (the point's headline error count), plus scores/counts that
   explain the colour (`score`, `posCount`, `floor3Attempts`, …).
+- `.WithEA(eaOne(EAU2C2, score, max))` attaches the point's Embedded
+  Assessment checkpoint score(s) for the end-of-game ceremony (`ea.go`: ids,
+  maxima, banding helpers, the solar-still outcome map). Emit only from a
+  well-bounded attempt (check `ec.StartEventID` for start-anchored windows);
+  absent means unknown, never 0. Register a new checkpoint in `EACheckpoints`
+  so the unit's star total includes it.
 
 ## Verify
 

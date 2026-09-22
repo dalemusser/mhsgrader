@@ -20,6 +20,10 @@ import (
 // count, tera_count = reminders from the start to the first 21:1 (Tera's
 // greeting; the window end when absent), aryn_count = reminders from the
 // first 18:231 (Aryn waypoint prompt) to the end (0 when absent).
+// EA U2.C3 (max 3, team decision D1): the Tera search and the Aryn search
+// scored separately by their own help-dialog sets (the EA document's rows
+// 2.3 and 2.4: once or less 1½, two or three 1, four ½, more 0) and summed;
+// only when the window has a start anchor.
 type U2P3Rule struct{ BaseRule }
 
 func NewU2P3Rule() *U2P3Rule {
@@ -39,18 +43,21 @@ func (r *U2P3Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userI
 		arynStartKey = "DialogueNodeEvent:18:231" // Aryn waypoint prompt: the Aryn search begins
 	)
 
-	targetKeys := []string{
+	teraKeys := []string{ // the Tera search's help dialogs (EA row 2.3)
 		"DialogueNodeEvent:18:225", "DialogueNodeEvent:28:185", "DialogueNodeEvent:59:185",
 		"DialogueNodeEvent:28:184", "DialogueNodeEvent:28:191", "DialogueNodeEvent:59:184", "DialogueNodeEvent:59:191",
 		"DialogueNodeEvent:18:226", "DialogueNodeEvent:18:227", "DialogueNodeEvent:28:186", "DialogueNodeEvent:59:186",
 		"DialogueNodeEvent:18:228", "DialogueNodeEvent:28:187", "DialogueNodeEvent:59:187",
 		"DialogueNodeEvent:18:229", "DialogueNodeEvent:28:188", "DialogueNodeEvent:59:188",
 		"DialogueNodeEvent:18:230", "DialogueNodeEvent:28:180", "DialogueNodeEvent:59:180",
+	}
+	arynKeys := []string{ // the Aryn search's help dialogs (EA row 2.4)
 		"DialogueNodeEvent:18:233", "DialogueNodeEvent:28:192", "DialogueNodeEvent:59:192",
 		"DialogueNodeEvent:18:234", "DialogueNodeEvent:28:193", "DialogueNodeEvent:59:193",
 		"DialogueNodeEvent:18:235", "DialogueNodeEvent:28:194", "DialogueNodeEvent:59:194",
 		"DialogueNodeEvent:18:236", "DialogueNodeEvent:18:237", "DialogueNodeEvent:28:190", "DialogueNodeEvent:59:190",
 	}
+	targetKeys := append(append([]string{}, teraKeys...), arynKeys...)
 
 	// Colour: the timestamp-fenced count.
 	fencedCount, err := helper.CountEventsInWindow(ctx, userID, targetKeys, w)
@@ -98,12 +105,28 @@ func (r *U2P3Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userI
 	}
 
 	hasStart := !ec.StartEventID.IsZero()
+
+	// EA: each search by its own key set over the _id window.
+	var ea map[string]EAScore
+	if hasStart {
+		teraHelp, err := helper.CountEventsInWindow(ctx, userID, teraKeys, idWindow)
+		if err != nil {
+			return Result{}, err
+		}
+		arynHelp, err := helper.CountEventsInWindow(ctx, userID, arynKeys, idWindow)
+		if err != nil {
+			return Result{}, err
+		}
+		metrics["eaTeraHelpCount"] = teraHelp
+		metrics["eaArynHelpCount"] = arynHelp
+		ea = eaOne(EAU2C3, EAHelpBand15(teraHelp)+EAHelpBand15(arynHelp), 3)
+	}
 	windowValid := hasStart && w.TSStart != nil && w.TSEnd != nil
 	if !windowValid {
 		metrics["windowInvalid"] = "start anchor or client timestamp missing; yellow by rule"
 	}
 	if windowValid && fencedCount < 6 {
-		return PassedWithMetrics(metrics), nil
+		return PassedWithMetrics(metrics).WithEA(ea), nil
 	}
 
 	var reasons []Reason
@@ -117,5 +140,5 @@ func (r *U2P3Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userI
 			},
 		})
 	}
-	return FlaggedWith(metrics, reasons...), nil
+	return FlaggedWith(metrics, reasons...).WithEA(ea), nil
 }

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"strconv"
 	"time"
 
 	"github.com/dalemusser/mhsgrader/internal/app/rules"
@@ -131,6 +132,7 @@ func (e *Evaluator) EvaluateAndStore(ctx context.Context, event TriggerEvent) er
 			Metrics:    metrics,
 			StartTime:  ec.StartTime,
 			EndTime:    &endTime,
+			EAScores:   toStoredEAScores(result.EAScores),
 		}
 
 		// Durations are measured from the start anchor (not the graded window)
@@ -153,9 +155,83 @@ func (e *Evaluator) EvaluateAndStore(ctx context.Context, event TriggerEvent) er
 			zap.String("pointId", rule.PointID()),
 			zap.String("status", result.Status),
 		)
+
+		// The unit's star for the ceremony follows every finished grade in it.
+		if err := e.refreshEAStars(ctx, event.UserID, rule.Unit()); err != nil {
+			e.logger.Error("failed to refresh EA stars",
+				zap.String("user_id", event.UserID),
+				zap.Int("unit", rule.Unit()),
+				zap.Error(err),
+			)
+			firstErr = errors.Join(firstErr, err)
+		}
 	}
 
 	return firstErr
+}
+
+// refreshEAStars recomputes one unit's star entry (rules.EAStarsForUnit) from
+// the latest finished attempt of each of its points. The entry exists only
+// once every point of the unit has a finished attempt — the dashboard's
+// "unit finished" rule — so a unit still in progress shows no star rather
+// than an understated one; it is removed again if a point goes back to
+// active-only (a wiped replay).
+func (e *Evaluator) refreshEAStars(ctx context.Context, userID string, unit int) error {
+	starUnit := false
+	for _, u := range rules.EAStarUnits {
+		if u == unit {
+			starUnit = true
+		}
+	}
+	if !starUnit {
+		return nil
+	}
+	pg, err := e.gradeStore.GetForUser(ctx, e.game, userID)
+	if err != nil || pg == nil {
+		return err
+	}
+	unitID := "unit" + strconv.Itoa(unit)
+	scores := map[string]rules.EAScore{}
+	finished := true
+	for _, r := range e.registry.AllRules() {
+		if r.Unit() != unit {
+			continue
+		}
+		g := pg.LatestFinished(r.PointID())
+		if g == nil {
+			finished = false
+			break
+		}
+		for id, s := range g.EAScores {
+			scores[id] = rules.EAScore{Score: s.Score, Max: s.Max}
+		}
+	}
+	if !finished {
+		if _, had := pg.EAStars[unitID]; had {
+			return e.gradeStore.SetEAStar(ctx, e.game, userID, unitID, nil)
+		}
+		return nil
+	}
+	stars, ok := rules.EAStarsForUnit(unit, scores)
+	if !ok {
+		return nil
+	}
+	if cur, had := pg.EAStars[unitID]; had && cur == stars {
+		return nil
+	}
+	return e.gradeStore.SetEAStar(ctx, e.game, userID, unitID, &stars)
+}
+
+// toStoredEAScores converts rule EA scores to their stored form.
+func toStoredEAScores(m map[string]rules.EAScore) map[string]progressgrades.EAScore {
+	if len(m) == 0 {
+		return nil
+	}
+	out := make(map[string]progressgrades.EAScore, len(m))
+	for k, v := range m {
+		out[k] = progressgrades.EAScore{Score: v.Score, Max: v.Max}
+	}
+	return out
 }
 
 // buildContext resolves the start anchor and the graded window for a trigger

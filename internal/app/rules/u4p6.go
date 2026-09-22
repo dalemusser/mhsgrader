@@ -19,6 +19,8 @@ import (
 // Final = max(box score, dialogue score); green iff final >= 2.
 // Reason WRONG_SOIL_SELECTED: wrong_box_number, wrong_box_summary (built
 // from the box check).
+// EA U4.C6 (max 3): the final score (boxes with the right soil); only when
+// the window has a start anchor.
 type U4P6Rule struct{ BaseRule }
 
 func NewU4P6Rule() *U4P6Rule {
@@ -92,8 +94,12 @@ func (r *U4P6Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userI
 	metrics["dialogueScore"] = dialogueScore
 	metrics["score"] = finalScore
 	metrics["mistakeCount"] = wrongBoxes
+	var ea map[string]EAScore
+	if !ec.StartEventID.IsZero() {
+		ea = eaOne(EAU4C6, float64(finalScore), 3)
+	}
 	if finalScore >= 2 {
-		return PassedWithMetrics(metrics), nil
+		return PassedWithMetrics(metrics).WithEA(ea), nil
 	}
 	return FlaggedWith(metrics, Reason{
 		Code: "WRONG_SOIL_SELECTED",
@@ -101,5 +107,5 @@ func (r *U4P6Rule) Evaluate(ctx context.Context, db *mongo.Database, game, userI
 			"wrong_box_number":  wrongBoxes,
 			"wrong_box_summary": strings.Join(wrongParts, " and "),
 		},
-	}), nil
+	}).WithEA(ea), nil
 }
