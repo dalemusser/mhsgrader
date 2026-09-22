@@ -202,3 +202,24 @@ EA scores organically, but historical grades need a one-time reprocess:
 - EA definitions: `mhscurriculum/docs/curriculum/Game Wide Docs/MHS 2.0 Embedded Assessment Working Doc.md`
 - Grade doc shape: `mhsgrader/internal/app/store/progressgrades/store.go`
 - Existing reader to mirror: `stratahub/internal/app/features/mhsdashboard/summary.go`
+
+## Addendum 2026-09-21 — decisions for the first playable ceremony
+
+The team-facing decisions and questions are in
+`mhsgrading/docs/ea-scores-team-questions-2026-09.md` (answers expected in an
+`…-answers.md` beside it). They supersede notes 3 and 5 above:
+
+- **U2.C3 = Tera + Aryn (max 3).** `u2p3.go` already tracks both key sets and
+  the Aryn start (`18:231`); emit the two bandings separately and sum them.
+- **U5.C4 from the outcome node** (`106:4 … 106:35`): each node's title names
+  the roof/cover/temperature combination; ½ each for Tilted Out, Uncovered,
+  Cold; score the first submission.
+- **All checkpoints in the EA document are computed** (stars need unit
+  totals); the crosswalk with derivations is in the team document §2.
+- **Stars**: share of the unit's implemented maximum until the team confirms
+  the totals (≥ 83 % three, ≥ 57 % two, else one; no graded checkpoint → no
+  entry). Unit 1 has no star row.
+- **Critique Jasper's argument** is held until the team names the
+  conversation; **U3.C2** reuses the rule's 5-point score.
+- The stratahub plan that consumes all this:
+  `stratahub/docs/mission-hydrosci/mhs-end-ceremony-plan.md`.
